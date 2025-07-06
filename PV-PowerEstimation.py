@@ -292,7 +292,7 @@ USING THIS TOOL EFFECTIVELY
    - Permitting requirements
 
 Author: Dragos Ruiu
-Version: 1.0.1
+Version: 1.0.2
 Date: 2025-07-05
 
 Requirements:
@@ -587,7 +587,7 @@ except ImportError as e:
 warnings.filterwarnings('ignore', module='pvlib')
 
 # Constants
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 DEFAULT_SYSTEM_SIZE = 8.0  # kW
 MIN_LATITUDE = -90.0
 MAX_LATITUDE = 90.0
@@ -601,6 +601,141 @@ NOMINATIM_API = "https://nominatim.openstreetmap.org/search"
 ELEVATION_API = "https://api.open-elevation.com/api/v1/lookup"
 PVGIS_API_BASE = "https://re.jrc.ec.europa.eu/api/v5_2/"
 NREL_API_BASE = "https://developer.nrel.gov/api/nsrdb/v2/solar/"
+
+
+# Regional electricity rates database (2024-2025 data)
+# Rates are in local currency per kWh
+ELECTRICITY_RATES = {
+    # Canadian provinces (CAD/kWh)
+    "canada": {
+        "alberta": 0.166,          # Deregulated market, avg rate
+        "british columbia": 0.133,  # BC Hydro Step 2 rate
+        "manitoba": 0.097,          # Manitoba Hydro
+        "new brunswick": 0.129,     # NB Power
+        "newfoundland and labrador": 0.137,  # Newfoundland Power
+        "northwest territories": 0.387,       # NTPC (highest in Canada)
+        "nova scotia": 0.183,       # Nova Scotia Power
+        "nunavut": 0.375,           # Qulliq Energy
+        "ontario": 0.158,           # Time-of-use average
+        "prince edward island": 0.179,  # Maritime Electric
+        "quebec": 0.073,            # Hydro-Québec (lowest in Canada)
+        "saskatchewan": 0.150,      # SaskPower
+        "yukon": 0.187,             # ATCO Electric Yukon
+        "default": 0.140            # Canadian average
+    },
+    
+    # US states (USD/kWh)
+    "united states": {
+        "alabama": 0.147,
+        "alaska": 0.235,
+        "arizona": 0.136,
+        "arkansas": 0.125,
+        "california": 0.287,        # Highest in continental US
+        "colorado": 0.140,
+        "connecticut": 0.248,
+        "delaware": 0.139,
+        "district of columbia": 0.165,
+        "florida": 0.139,
+        "georgia": 0.138,
+        "hawaii": 0.447,            # Highest in US
+        "idaho": 0.111,
+        "illinois": 0.147,
+        "indiana": 0.146,
+        "iowa": 0.120,
+        "kansas": 0.132,
+        "kentucky": 0.123,
+        "louisiana": 0.120,         # Lowest in US
+        "maine": 0.229,
+        "maryland": 0.148,
+        "massachusetts": 0.264,
+        "michigan": 0.179,
+        "minnesota": 0.138,
+        "mississippi": 0.129,
+        "missouri": 0.120,
+        "montana": 0.117,
+        "nebraska": 0.116,
+        "nevada": 0.143,
+        "new hampshire": 0.267,
+        "new jersey": 0.175,
+        "new mexico": 0.139,
+        "new york": 0.216,
+        "north carolina": 0.123,
+        "north dakota": 0.109,
+        "ohio": 0.138,
+        "oklahoma": 0.113,
+        "oregon": 0.118,
+        "pennsylvania": 0.157,
+        "rhode island": 0.273,
+        "south carolina": 0.137,
+        "south dakota": 0.125,
+        "tennessee": 0.127,
+        "texas": 0.143,
+        "utah": 0.110,
+        "vermont": 0.208,
+        "virginia": 0.134,
+        "washington": 0.103,        # Lowest after Louisiana
+        "west virginia": 0.133,
+        "wisconsin": 0.154,
+        "wyoming": 0.110,
+        "default": 0.154            # US average
+    },
+    
+    # Other major countries (local currency/kWh)
+    "mexico": 0.079,                # USD/kWh (subsidized rate)
+    "united kingdom": 0.228,        # GBP/kWh
+    "france": 0.231,                # EUR/kWh
+    "germany": 0.397,               # EUR/kWh (highest in Europe)
+    "spain": 0.247,                 # EUR/kWh
+    "italy": 0.284,                 # EUR/kWh
+    "netherlands": 0.300,           # EUR/kWh
+    "belgium": 0.337,               # EUR/kWh
+    "denmark": 0.356,               # EUR/kWh
+    "sweden": 0.153,                # EUR/kWh
+    "norway": 0.116,                # EUR/kWh
+    "poland": 0.173,                # EUR/kWh
+    "australia": 0.308,             # AUD/kWh
+    "new zealand": 0.303,           # NZD/kWh
+    "japan": 31.0,                  # JPY/kWh
+    "china": 0.54,                  # CNY/kWh
+    "india": 6.5,                   # INR/kWh
+    "brazil": 0.65,                 # BRL/kWh
+    "south africa": 2.31,           # ZAR/kWh
+    "default": 0.140                # USD/kWh global estimate
+}
+
+# Currency conversion rates to USD (as of Jan 2025)
+CURRENCY_TO_USD = {
+    "CAD": 0.70,    # Canadian Dollar
+    "USD": 1.00,    # US Dollar
+    "GBP": 1.27,    # British Pound
+    "EUR": 1.05,    # Euro
+    "AUD": 0.62,    # Australian Dollar
+    "NZD": 0.56,    # New Zealand Dollar
+    "JPY": 0.0064,  # Japanese Yen
+    "CNY": 0.137,   # Chinese Yuan
+    "INR": 0.012,   # Indian Rupee
+    "BRL": 0.163,   # Brazilian Real
+    "ZAR": 0.053,   # South African Rand
+    "MXN": 0.049    # Mexican Peso
+}
+
+
+@dataclass
+class LocationInfo:
+    """
+    Extended location information including geopolitical details.
+    """
+    latitude: float
+    longitude: float
+    altitude: float
+    address: str
+    country: Optional[str] = None
+    state_province: Optional[str] = None
+    city: Optional[str] = None
+    country_code: Optional[str] = None
+    electricity_rate: Optional[float] = None
+    currency: Optional[str] = None
+    rate_source: Optional[str] = None
 
 
 @dataclass
@@ -802,14 +937,11 @@ class SystemConfig:
 
 class AddressGeocoder:
     """
-    Handles conversion of street addresses to GPS coordinates.
+    Handles conversion of street addresses to GPS coordinates with regional detection.
     Uses OpenStreetMap's Nominatim service (free, no API key required).
     
-    Geocoding is essential for solar analysis as location determines:
-    - Solar path geometry (latitude effect)
-    - Climate zone and weather patterns
-    - Time zone and solar noon timing
-    - Magnetic declination for compass headings
+    Extended to extract country, state/province, and city information for
+    electricity rate lookup.
     """
     
     def __init__(self):
@@ -820,20 +952,15 @@ class AddressGeocoder:
             'User-Agent': f'PV-PowerEstimate/{VERSION} (https://github.com/secwest/PV-Generation-Planning)'
         })
     
-    def geocode(self, address: str) -> Optional[Tuple[float, float]]:
+    def geocode_with_details(self, address: str) -> Optional[LocationInfo]:
         """
-        Convert address string to latitude/longitude coordinates.
+        Convert address string to detailed location information.
         
         Args:
             address: Street address, city, or location description
             
         Returns:
-            Tuple of (latitude, longitude) or None if not found
-            
-        Example:
-            >>> geocoder = AddressGeocoder()
-            >>> coords = geocoder.geocode("111 Wellington Street, Ottawa, Ontario")
-            >>> print(f"Lat: {coords[0]}, Lon: {coords[1]}")
+            LocationInfo object with coordinates and regional details, or None if not found
         """
         try:
             # Nominatim API parameters
@@ -841,7 +968,9 @@ class AddressGeocoder:
                 'q': address,
                 'format': 'json',
                 'limit': 1,
-                'addressdetails': 1
+                'addressdetails': 1,
+                'extratags': 1,
+                'namedetails': 1
             }
             
             # Make request with timeout
@@ -859,12 +988,50 @@ class AddressGeocoder:
                     lat = float(result['lat'])
                     lon = float(result['lon'])
                     
-                    # Log the resolved location for verification
+                    # Extract address components
+                    addr = result.get('address', {})
+                    
+                    # Get country and country code
+                    country = addr.get('country', '').lower()
+                    country_code = addr.get('country_code', '').upper()
+                    
+                    # Get state/province - try multiple fields
+                    state_province = (
+                        addr.get('state', '') or 
+                        addr.get('province', '') or 
+                        addr.get('region', '') or
+                        addr.get('county', '')
+                    ).lower()
+                    
+                    # Get city
+                    city = (
+                        addr.get('city', '') or 
+                        addr.get('town', '') or 
+                        addr.get('village', '') or
+                        addr.get('municipality', '')
+                    ).lower()
+                    
+                    # Display name for user verification
                     display_name = result.get('display_name', 'Unknown')
+                    
+                    # Create LocationInfo object
+                    location_info = LocationInfo(
+                        latitude=lat,
+                        longitude=lon,
+                        altitude=0.0,  # Will be fetched separately
+                        address=display_name,
+                        country=country,
+                        state_province=state_province,
+                        city=city,
+                        country_code=country_code
+                    )
+                    
+                    # Log the resolved location for verification
                     logger.info(f"Geocoded '{address}' to: {display_name}")
+                    logger.info(f"Country: {country}, State/Province: {state_province}, City: {city}")
                     logger.info(f"Coordinates: {lat:.4f}, {lon:.4f}")
                     
-                    return lat, lon
+                    return location_info
                 else:
                     logger.warning(f"No results found for address: {address}")
                     return None
@@ -881,11 +1048,149 @@ class AddressGeocoder:
         except Exception as e:
             logger.error(f"Unexpected error during geocoding: {e}")
             return None
+    
+    def geocode(self, address: str) -> Optional[Tuple[float, float]]:
+        """
+        Convert address string to latitude/longitude coordinates.
+        Legacy method for backward compatibility.
+        
+        Args:
+            address: Street address, city, or location description
+            
+        Returns:
+            Tuple of (latitude, longitude) or None if not found
+        """
+        location_info = self.geocode_with_details(address)
+        if location_info:
+            return location_info.latitude, location_info.longitude
+        return None
+
+
+class ElectricityRateManager:
+    """
+    Manages electricity rate lookup based on location.
+    Provides accurate regional electricity rates for economic analysis.
+    """
+    
+    @staticmethod
+    def get_rate_for_location(location_info: LocationInfo) -> Tuple[float, str, str]:
+        """
+        Get electricity rate for a specific location.
+        
+        Args:
+            location_info: LocationInfo object with country and state/province
+            
+        Returns:
+            Tuple of (rate_in_usd, currency, source_description)
+        """
+        country = location_info.country.lower() if location_info.country else ""
+        state_province = location_info.state_province.lower() if location_info.state_province else ""
+        
+        # Handle Canadian provinces
+        if country == "canada" and state_province:
+            rates = ELECTRICITY_RATES["canada"]
+            # Try to match province name
+            for province_key, rate in rates.items():
+                if province_key in state_province or state_province in province_key:
+                    rate_usd = rate * CURRENCY_TO_USD["CAD"]
+                    source = f"{province_key.title()} average rate (2024-2025)"
+                    return rate_usd, "CAD", source
+            # Default Canadian rate
+            rate_cad = rates["default"]
+            rate_usd = rate_cad * CURRENCY_TO_USD["CAD"]
+            return rate_usd, "CAD", "Canadian average rate"
+        
+        # Handle US states
+        elif country == "united states" and state_province:
+            rates = ELECTRICITY_RATES["united states"]
+            # Try to match state name
+            for state_key, rate in rates.items():
+                if state_key in state_province or state_province in state_key:
+                    source = f"{state_key.title()} average rate (2024-2025)"
+                    return rate, "USD", source
+            # Default US rate
+            return rates["default"], "USD", "US average rate"
+        
+        # Handle other countries
+        else:
+            # Check if country is in our database
+            for country_key in ELECTRICITY_RATES:
+                if country_key in country or country in country_key:
+                    if isinstance(ELECTRICITY_RATES[country_key], dict):
+                        # Skip nested dicts (Canada, US)
+                        continue
+                    
+                    rate_local = ELECTRICITY_RATES[country_key]
+                    
+                    # Determine currency and convert to USD
+                    if country_key == "united kingdom":
+                        rate_usd = rate_local * CURRENCY_TO_USD["GBP"]
+                        currency = "GBP"
+                    elif country_key in ["france", "germany", "spain", "italy", "netherlands", 
+                                         "belgium", "denmark", "sweden", "norway", "poland"]:
+                        rate_usd = rate_local * CURRENCY_TO_USD["EUR"]
+                        currency = "EUR"
+                    elif country_key == "australia":
+                        rate_usd = rate_local * CURRENCY_TO_USD["AUD"]
+                        currency = "AUD"
+                    elif country_key == "new zealand":
+                        rate_usd = rate_local * CURRENCY_TO_USD["NZD"]
+                        currency = "NZD"
+                    elif country_key == "japan":
+                        rate_usd = rate_local * CURRENCY_TO_USD["JPY"]
+                        currency = "JPY"
+                    elif country_key == "china":
+                        rate_usd = rate_local * CURRENCY_TO_USD["CNY"]
+                        currency = "CNY"
+                    elif country_key == "india":
+                        rate_usd = rate_local * CURRENCY_TO_USD["INR"]
+                        currency = "INR"
+                    elif country_key == "brazil":
+                        rate_usd = rate_local * CURRENCY_TO_USD["BRL"]
+                        currency = "BRL"
+                    elif country_key == "south africa":
+                        rate_usd = rate_local * CURRENCY_TO_USD["ZAR"]
+                        currency = "ZAR"
+                    elif country_key == "mexico":
+                        rate_usd = rate_local  # Already in USD
+                        currency = "USD"
+                    else:
+                        rate_usd = rate_local
+                        currency = "USD"
+                    
+                    source = f"{country_key.title()} average rate (2024-2025)"
+                    return rate_usd, currency, source
+        
+        # Default global rate
+        return ELECTRICITY_RATES["default"], "USD", "Global average estimate"
+    
+    @staticmethod
+    def format_rate_info(rate_usd: float, currency: str, source: str) -> str:
+        """
+        Format electricity rate information for display.
+        
+        Args:
+            rate_usd: Rate in USD per kWh
+            currency: Original currency code
+            source: Description of rate source
+            
+        Returns:
+            Formatted string for display
+        """
+        if currency != "USD":
+            # Convert back to local currency for display
+            local_rate = rate_usd / CURRENCY_TO_USD.get(currency, 1.0)
+            return f"${rate_usd:.3f} USD/kWh ({local_rate:.3f} {currency}/kWh) - {source}"
+        else:
+            return f"${rate_usd:.3f} USD/kWh - {source}"
 
 
 class SolarPVCalculator:
     """
     Main calculator class for solar PV power yield estimation.
+    
+    Extended with regional electricity rate detection for accurate
+    economic analysis.
     
     Implements comprehensive physics-based modeling of the complete
     photovoltaic energy conversion chain:
@@ -922,7 +1227,8 @@ class SolarPVCalculator:
     """
     
     def __init__(self, latitude: float, longitude: float, 
-                 altitude: Optional[float] = None, address: Optional[str] = None):
+                 altitude: Optional[float] = None, address: Optional[str] = None,
+                 location_info: Optional[LocationInfo] = None):
         """
         Initialize calculator with location parameters.
         
@@ -941,6 +1247,7 @@ class SolarPVCalculator:
             longitude: Longitude in decimal degrees (-180 to 180)
             altitude: Elevation in meters (optional, will be fetched)
             address: Human-readable address for reference
+            location_info: Extended location information including region
             
         Raises:
             ValueError: If coordinates are out of valid range
@@ -952,6 +1259,19 @@ class SolarPVCalculator:
         self.lat = latitude
         self.lon = longitude
         self.address = address
+        self.location_info = location_info
+        
+        # Get electricity rate for location
+        if location_info:
+            rate_usd, currency, source = ElectricityRateManager.get_rate_for_location(location_info)
+            self.electricity_rate = rate_usd
+            self.electricity_currency = currency
+            self.rate_source = source
+            logger.info(f"Electricity rate: {ElectricityRateManager.format_rate_info(rate_usd, currency, source)}")
+        else:
+            self.electricity_rate = 0.14  # Default
+            self.electricity_currency = "USD"
+            self.rate_source = "Default rate"
         
         # Altitude effects on solar resource:
         # 1. Reduced air mass → less atmospheric attenuation
@@ -1708,7 +2028,7 @@ class SolarPVCalculator:
                        monthly: pd.DataFrame, annual_energy: float,
                        annual_specific_yield: float, capacity_factor: float,
                        system_size_dc: float, system_config: SystemConfig,
-                       electricity_rate: float = 0.14, cost_per_watt: float = None) -> str:
+                       electricity_rate: float = None, cost_per_watt: float = None) -> str:
         """
         Generate comprehensive performance assessment report.
         
@@ -1719,6 +2039,10 @@ class SolarPVCalculator:
         - Financial analysis
         - Optimization opportunities
         """
+        # Use location-specific rate if not provided
+        if electricity_rate is None:
+            electricity_rate = self.electricity_rate
+        
         # Calculate additional metrics
         pr = system_config.total_loss_factor * 100
         peak_power_time = results['ac_power'].idxmax()
@@ -1781,6 +2105,12 @@ class SolarPVCalculator:
         theoretical_max = total_irradiation * array_area * avg_module_eff
         utilization = (annual_energy / theoretical_max) * 100
         
+        # Get location info for header
+        location_name = self.location.name
+        if self.location_info:
+            if self.location_info.country:
+                location_name += f", {self.location_info.country.title()}"
+        
         report = f"""
 ================================================================================
                      SOLAR PV POWER YIELD ASSESSMENT REPORT
@@ -1790,10 +2120,11 @@ Software: PV-PowerEstimate v{VERSION}
 
 SITE INFORMATION
 ----------------
-Location: {self.location.name}
+Location: {location_name}
 Coordinates: {self.lat:.4f}°, {self.lon:.4f}°
 Elevation: {self.altitude:.0f} m above sea level
 Time Zone: UTC (all times in UTC)
+Electricity Rate: {ElectricityRateManager.format_rate_info(electricity_rate, self.electricity_currency, self.rate_source)}
 
 SYSTEM CONFIGURATION
 --------------------
@@ -1814,7 +2145,7 @@ Specific Yield: {annual_specific_yield:,.0f} kWh/kWp/year
 Capacity Factor: {capacity_factor:.1f}%
 Performance Ratio: {pr:.1f}%
 Solar Resource Utilization: {utilization:.1f}%
-Estimated Annual Revenue: ${annual_revenue:,.0f} (at ${electricity_rate}/kWh)
+Estimated Annual Revenue: ${annual_revenue:,.0f} (at ${electricity_rate:.3f}/kWh)
 
 ECONOMIC ANALYSIS (2024-2025 Market)
 ------------------------------------
@@ -2060,6 +2391,20 @@ NEXT STEPS
    - Electrical system compatibility
    - Utility interconnection requirements
 
+REGIONAL ELECTRICITY CONTEXT
+----------------------------
+Location: {location_name}
+Rate Used: {ElectricityRateManager.format_rate_info(electricity_rate, self.electricity_currency, self.rate_source)}
+
+This rate was automatically determined based on your location. Actual rates may vary by:
+- Utility provider (some regions have multiple providers)
+- Rate schedule (residential vs commercial)
+- Time-of-use pricing
+- Demand charges (commercial customers)
+- Net metering policies
+
+For most accurate analysis, verify your actual electricity rate from a recent utility bill.
+
 UNCERTAINTY ANALYSIS
 --------------------
 This assessment uncertainty: ±8-10%
@@ -2169,7 +2514,12 @@ Educational resources: Run with --help-tutorial for detailed guide
                     'latitude': self.lat,
                     'longitude': self.lon,
                     'altitude': self.altitude,
-                    'address': self.address
+                    'address': self.address,
+                    'country': self.location_info.country if self.location_info else None,
+                    'state_province': self.location_info.state_province if self.location_info else None,
+                    'electricity_rate_usd': self.electricity_rate,
+                    'electricity_currency': self.electricity_currency,
+                    'rate_source': self.rate_source
                 },
                 'system': {
                     'size_kw': results.attrs.get('system_size', 0)
@@ -2298,8 +2648,7 @@ For more information, visit: https://github.com/secwest/PV-Generation-Planning
     parser.add_argument(
         '--electricity-rate',
         type=float,
-        default=0.14,
-        help='Electricity rate in $/kWh (default: 0.14). US average ~$0.14/kWh, ranges from $0.08-0.30/kWh by location'
+        help='Electricity rate in $/kWh. Default: auto-detected based on location'
     )
     
     # Data source selection
@@ -2567,6 +2916,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         latitude = None
         longitude = None
         address = None
+        location_info = None
         
         if args.lat is not None and args.lon is not None:
             # Coordinates provided
@@ -2578,11 +2928,12 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             # Address provided - geocode it
             logger.info(f"Geocoding address: {args.address}")
             geocoder = AddressGeocoder()
-            coords = geocoder.geocode(args.address)
+            location_info = geocoder.geocode_with_details(args.address)
             
-            if coords:
-                latitude, longitude = coords
-                address = args.address
+            if location_info:
+                latitude = location_info.latitude
+                longitude = location_info.longitude
+                address = location_info.address
             else:
                 print(f"Error: Could not geocode address '{args.address}'")
                 print("Please check the address or use coordinates instead.")
@@ -2620,11 +2971,14 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 address = input("Address: ").strip()
                 if address:
                     geocoder = AddressGeocoder()
-                    coords = geocoder.geocode(address)
+                    location_info = geocoder.geocode_with_details(address)
                     
-                    if coords:
-                        latitude, longitude = coords
+                    if location_info:
+                        latitude = location_info.latitude
+                        longitude = location_info.longitude
                         print(f"✓ Found coordinates: {latitude:.4f}, {longitude:.4f}")
+                        if location_info.country:
+                            print(f"✓ Location: {location_info.city or 'Unknown city'}, {location_info.state_province or 'Unknown region'}, {location_info.country}")
                     else:
                         print(f"Error: Could not geocode address '{address}'")
                         return 1
@@ -2716,7 +3070,8 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             latitude=latitude,
             longitude=longitude,
             altitude=args.altitude,
-            address=address
+            address=address,
+            location_info=location_info
         )
         
         # Fetch weather data
@@ -2779,10 +3134,11 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 cost_per_watt = 1.00
         
         # Get electricity rate
-        if hasattr(args, 'electricity_rate'):
+        if hasattr(args, 'electricity_rate') and args.electricity_rate:
             electricity_rate = args.electricity_rate
         else:
-            electricity_rate = 0.14
+            # Use auto-detected rate
+            electricity_rate = calc.electricity_rate
         
         # Economic calculations
         system_cost_estimate = system_size * cost_per_watt * 1000
@@ -2815,7 +3171,8 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"📊 Annual Energy: {annual_energy:,.0f} kWh/year")
         print(f"📈 Specific Yield: {annual_specific_yield:,.0f} kWh/kWp/year")
         print(f"⚙️  Capacity Factor: {capacity_factor:.1f}%")
-        print(f"💰 Est. Annual Revenue: ${annual_energy * electricity_rate:,.0f} (at ${electricity_rate}/kWh)")
+        print(f"💰 Est. Annual Revenue: ${annual_energy * electricity_rate:,.0f} (at ${electricity_rate:.3f}/kWh)")
+        print(f"   Rate Info: {ElectricityRateManager.format_rate_info(electricity_rate, calc.electricity_currency, calc.rate_source)}")
         print("=" * 60)
         
         # Add interpretation of results
@@ -2838,7 +3195,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         # Capacity factor interpretation
         print(f"   Capacity Factor: {capacity_factor:.1f}% (typical solar: 15-25%)")
         print(f"   System Cost: ${system_cost_estimate:,.0f} (at ${cost_per_watt}/W installed)")
-        print(f"   Annual Value: ${annual_revenue:,.0f} (at ${electricity_rate}/kWh)")
+        print(f"   Annual Value: ${annual_revenue:,.0f} (at ${electricity_rate:.3f}/kWh)")
         print(f"   Simple Payback: {payback_years:.1f} years (before incentives)")
         
         # Calculate with federal ITC
@@ -2952,7 +3309,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"   {'Performance Ratio':<30} {pr:>19.1f}%")
         print(f"   {'Peak Power Output':<30} {peak_power:>19.1f} kW")
         print(f"   {'CO2 Avoided':<30} {co2_saved/1000:>19.1f} tons/yr")
-        print(f"   {'Annual Value (@${electricity_rate}/kWh)':<30} ${annual_revenue:>18,.0f}")
+        print(f"   {'Annual Value (@${electricity_rate:.3f}/kWh)':<30} ${annual_revenue:>18,.0f}")
         print(f"   {'System Cost (@${cost_per_watt}/W)':<30} ${system_cost_estimate:>18,.0f}")
         print(f"   {'Simple Payback':<30} {payback_years:>19.1f} years")
         print(f"   {'20-Year Net Savings':<30} ${(annual_revenue * 20) - system_cost_estimate:>18,.0f}")
