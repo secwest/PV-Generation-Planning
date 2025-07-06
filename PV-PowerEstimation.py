@@ -193,13 +193,34 @@ Key metrics for financial analysis:
 
 1. LCOE (Levelized Cost of Energy):
    LCOE = (Total Costs) / (Total Energy over Lifetime)
-   Typical: $0.03-0.08/kWh for utility scale
+   Current typical values (2024-2025):
+   - Residential: $0.06-0.10/kWh
+   - Commercial: $0.04-0.07/kWh  
+   - Utility scale: $0.03-0.05/kWh
 
-2. PAYBACK PERIOD:
-   Years = (System Cost) / (Annual Revenue)
-   Typical: 5-10 years residential
+2. INSTALLED COSTS (2024-2025 US Market):
+   System Type         $/W DC    Notes
+   ----------------------------------------
+   Residential         $2.50-3.00  Includes permitting, labor
+   Small Commercial    $1.75-2.25  Economies of scale
+   Large Commercial    $1.25-1.75  Bulk purchasing
+   Utility Scale       $0.80-1.20  Lowest cost/watt
 
-3. DEGRADATION:
+   Cost decline: ~70% reduction since 2010
+   Future trend: ~3-5% annual decline expected
+
+3. PAYBACK PERIOD:
+   Years = (System Cost) / (Annual Savings)
+   Current typical: 
+   - With incentives: 4-7 years
+   - Without incentives: 6-10 years
+
+4. INCENTIVES (US):
+   - Federal ITC: 30% through 2032
+   - State/local: Varies widely
+   - Net metering: Check local utility
+
+5. DEGRADATION:
    - Year 1: -1.5% (LID)
    - Years 2-25: -0.5-0.7%/year
    - 25-year output: ~80-85% of initial
@@ -1686,7 +1707,8 @@ class SolarPVCalculator:
     def generate_report(self, weather_data: pd.DataFrame, results: pd.DataFrame,
                        monthly: pd.DataFrame, annual_energy: float,
                        annual_specific_yield: float, capacity_factor: float,
-                       system_size_dc: float, system_config: SystemConfig) -> str:
+                       system_size_dc: float, system_config: SystemConfig,
+                       electricity_rate: float = 0.14, cost_per_watt: float = None) -> str:
         """
         Generate comprehensive performance assessment report.
         
@@ -1729,8 +1751,22 @@ class SolarPVCalculator:
         weather_monthly['dni_total'] = weather_monthly['dni_sum'] / 1000
         weather_monthly['dhi_total'] = weather_monthly['dhi_sum'] / 1000
         
-        # Economic assumptions
-        electricity_rate = 0.15  # $/kWh
+        # Economic assumptions - updated for 2024-2025 market
+        # Use provided electricity rate or default
+        
+        # Determine installed cost based on system size if not provided
+        if cost_per_watt is None:
+            if system_size_dc <= 10:  # Residential
+                default_cost_per_watt = 2.75  # $2.50-3.00/W typical
+            elif system_size_dc <= 100:  # Small commercial
+                default_cost_per_watt = 2.00  # $1.75-2.25/W typical
+            elif system_size_dc <= 1000:  # Large commercial
+                default_cost_per_watt = 1.50  # $1.25-1.75/W typical
+            else:  # Utility scale
+                default_cost_per_watt = 1.00  # $0.80-1.20/W typical
+        else:
+            default_cost_per_watt = cost_per_watt
+        
         annual_revenue = annual_energy * electricity_rate
         
         # Best and worst months
@@ -1779,6 +1815,30 @@ Capacity Factor: {capacity_factor:.1f}%
 Performance Ratio: {pr:.1f}%
 Solar Resource Utilization: {utilization:.1f}%
 Estimated Annual Revenue: ${annual_revenue:,.0f} (at ${electricity_rate}/kWh)
+
+ECONOMIC ANALYSIS (2024-2025 Market)
+------------------------------------
+System Category: {"Residential" if system_size_dc <= 10 else "Commercial" if system_size_dc <= 1000 else "Utility Scale"}
+Typical Installed Cost: ${default_cost_per_watt:.2f}/W DC
+Total System Cost Estimate: ${system_size_dc * default_cost_per_watt * 1000:,.0f}
+Simple Payback Period: {system_size_dc * default_cost_per_watt * 1000 / annual_revenue:.1f} years
+20-Year Net Savings: ${(annual_revenue * 20) - (system_size_dc * default_cost_per_watt * 1000):,.0f}
+
+Cost Trends (2024-2025):
+- Residential (≤10kW): $2.50-3.00/W installed
+- Small Commercial (10-100kW): $1.75-2.25/W installed
+- Large Commercial (100kW-1MW): $1.25-1.75/W installed
+- Utility Scale (>1MW): $0.80-1.20/W installed
+
+Note: Costs have declined ~70% since 2010. Current prices include equipment,
+installation, permitting, and interconnection. Federal ITC (30%) not included.
+
+Cost Factors:
+- Location: Labor costs vary significantly by region
+- Roof complexity: Simple roofs cost less than complex ones
+- Local permitting: Some areas have streamlined processes
+- Competition: More installers = better pricing
+- Equipment quality: Premium panels cost 10-20% more
 
 TECHNICAL PERFORMANCE METRICS
 -----------------------------
@@ -1950,6 +2010,8 @@ TECHNICAL RECOMMENDATIONS
 
 5. Future Enhancements:
    - Battery Storage: Size for {monthly['daily_energy'].mean():.0f} kWh daily cycling
+     * Current battery costs: $400-600/kWh installed (2024-2025)
+     * 10 kWh system: $4,000-6,000 (down from $10,000+ in 2020)
    - Tracking Systems: Could increase yield 25-35% (economic analysis needed)
    - Bifacial Modules: 5-15% gain with {0.2:.1f} ground albedo
    - Module Upgrade: Latest high-efficiency could add 10-20% capacity
@@ -1984,6 +2046,13 @@ NEXT STEPS
    - Net metering policies
    - Time-of-use rates
    - Financing options
+   
+   💡 Federal Investment Tax Credit (ITC):
+   - 30% of system cost through 2032
+   - Reduces to 26% in 2033, 22% in 2034
+   - Apply to payback calculation:
+     Net Cost = System Cost × (1 - 0.30)
+     Actual Payback = ~{system_size_dc * default_cost_per_watt * 1000 * 0.7 / annual_revenue:.1f} years with ITC
 
 5. Technical validation:
    - Professional shading analysis
@@ -2217,6 +2286,20 @@ For more information, visit: https://github.com/secwest/PV-Generation-Planning
         choices=['open_rack', 'close_mount', 'insulated_back'],
         default='open_rack',
         help='Mounting configuration (default: open_rack)'
+    )
+    
+    # Economic parameters
+    parser.add_argument(
+        '--cost-per-watt',
+        type=float,
+        help='Installed cost per watt DC in $/W. Default: auto-selected by system size. Current market: Residential $2.50-3.00/W, Commercial $1.25-2.25/W, Utility $0.80-1.20/W'
+    )
+    
+    parser.add_argument(
+        '--electricity-rate',
+        type=float,
+        default=0.14,
+        help='Electricity rate in $/kWh (default: 0.14). US average ~$0.14/kWh, ranges from $0.08-0.30/kWh by location'
     )
     
     # Data source selection
@@ -2553,8 +2636,13 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("\n⚡ SYSTEM SIZE")
             print("Typical sizes: Residential 3-10 kW, Commercial 10-500 kW, Utility >1000 kW")
             print("Rule of thumb: 1 kW ≈ 3-4 panels ≈ 1,400 kWh/year (varies by location)")
+            print("\n💵 CURRENT COSTS (2024-2025):")
+            print("   Residential: $2.50-3.00/W installed")
+            print("   Commercial: $1.25-2.25/W installed")
+            print("   Utility: $0.80-1.20/W installed")
+            print("   (Costs have declined ~70% since 2010!)")
             
-            size_str = input(f"System size in kW (press Enter for default {DEFAULT_SYSTEM_SIZE} kW): ").strip()
+            size_str = input(f"\nSystem size in kW (press Enter for default {DEFAULT_SYSTEM_SIZE} kW): ").strip()
             if size_str:
                 try:
                     system_size = float(size_str)
@@ -2612,6 +2700,10 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("4. Apply real-world loss factors")
             print("5. Generate detailed energy production estimates")
             print("="*50 + "\n")
+            
+            # Initialize system_config if not already done
+            if 'system_config' not in locals():
+                system_config = SystemConfig()
         
         # Validate we have location
         if latitude is None or longitude is None:
@@ -2672,11 +2764,46 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         monthly, annual_energy, annual_specific_yield, capacity_factor = \
             calc.calculate_monthly_yield(results, system_size)
         
+        # Determine cost per watt for economic calculations
+        if hasattr(args, 'cost_per_watt') and args.cost_per_watt:
+            cost_per_watt = args.cost_per_watt
+        else:
+            # Auto-select based on system size (2024-2025 estimates)
+            if system_size <= 10:  # Residential
+                cost_per_watt = 2.75
+            elif system_size <= 100:  # Small commercial
+                cost_per_watt = 2.00
+            elif system_size <= 1000:  # Large commercial
+                cost_per_watt = 1.50
+            else:  # Utility scale
+                cost_per_watt = 1.00
+        
+        # Get electricity rate
+        if hasattr(args, 'electricity_rate'):
+            electricity_rate = args.electricity_rate
+        else:
+            electricity_rate = 0.14
+        
+        # Economic calculations
+        system_cost_estimate = system_size * cost_per_watt * 1000
+        annual_revenue = annual_energy * electricity_rate
+        payback_years = system_cost_estimate / annual_revenue
+        
+        # CO2 savings
+        co2_saved = annual_energy * 0.4  # kg CO2 per kWh (US grid average)
+        
+        # Performance ratio
+        pr = system_config.total_loss_factor * 100
+        
+        # Peak power
+        peak_power = results['ac_power'].max()
+        
         # Generate report
         print("Generating report...")
         report = calc.generate_report(
             weather_data, results, monthly, annual_energy,
-            annual_specific_yield, capacity_factor, system_size, system_config
+            annual_specific_yield, capacity_factor, system_size, system_config,
+            electricity_rate=electricity_rate, cost_per_watt=cost_per_watt
         )
         
         # Display key results
@@ -2688,7 +2815,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"📊 Annual Energy: {annual_energy:,.0f} kWh/year")
         print(f"📈 Specific Yield: {annual_specific_yield:,.0f} kWh/kWp/year")
         print(f"⚙️  Capacity Factor: {capacity_factor:.1f}%")
-        print(f"💰 Est. Annual Revenue: ${annual_energy * 0.15:,.0f} (at $0.15/kWh)")
+        print(f"💰 Est. Annual Revenue: ${annual_energy * electricity_rate:,.0f} (at ${electricity_rate}/kWh)")
         print("=" * 60)
         
         # Add interpretation of results
@@ -2710,21 +2837,20 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         
         # Capacity factor interpretation
         print(f"   Capacity Factor: {capacity_factor:.1f}% (typical solar: 15-25%)")
+        print(f"   System Cost: ${system_cost_estimate:,.0f} (at ${cost_per_watt}/W installed)")
+        print(f"   Annual Value: ${annual_revenue:,.0f} (at ${electricity_rate}/kWh)")
+        print(f"   Simple Payback: {payback_years:.1f} years (before incentives)")
         
-        # Peak power
-        peak_power = results['ac_power'].max()
+        # Calculate with federal ITC
+        itc_credit = system_cost_estimate * 0.30
+        net_cost_with_itc = system_cost_estimate - itc_credit
+        payback_with_itc = net_cost_with_itc / annual_revenue
         
-        # Payback estimate
-        system_cost_estimate = system_size * 2000  # Rough $2/W installed
-        payback_years = system_cost_estimate / (annual_energy * 0.15)
-        print(f"   Simple Payback: ~{payback_years:.1f} years (at $2/W installed cost)")
+        print(f"   With 30% Federal ITC: ${net_cost_with_itc:,.0f} net cost")
+        print(f"   Payback with ITC: {payback_with_itc:.1f} years")
+        print(f"   20-Year Savings: ${(annual_revenue * 20) - system_cost_estimate:,.0f}")
         
-        # CO2 savings
-        co2_saved = annual_energy * 0.4  # kg CO2 per kWh (US grid average)
         print(f"   CO2 Avoided: {co2_saved/1000:.1f} metric tons/year")
-        
-        # Performance ratio
-        pr = system_config.total_loss_factor * 100
         
         # Monthly variation
         best_month = monthly['energy_kwh'].idxmax()
@@ -2826,8 +2952,10 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"   {'Performance Ratio':<30} {pr:>19.1f}%")
         print(f"   {'Peak Power Output':<30} {peak_power:>19.1f} kW")
         print(f"   {'CO2 Avoided':<30} {co2_saved/1000:>19.1f} tons/yr")
-        print(f"   {'Annual Value (@$0.15/kWh)':<30} ${annual_energy * 0.15:>18,.0f}")
+        print(f"   {'Annual Value (@${electricity_rate}/kWh)':<30} ${annual_revenue:>18,.0f}")
+        print(f"   {'System Cost (@${cost_per_watt}/W)':<30} ${system_cost_estimate:>18,.0f}")
         print(f"   {'Simple Payback':<30} {payback_years:>19.1f} years")
+        print(f"   {'20-Year Net Savings':<30} ${(annual_revenue * 20) - system_cost_estimate:>18,.0f}")
         print("   " + "-" * 50)
         
         # Print the full report to console unless --no-print is specified
