@@ -36,15 +36,27 @@ Description:
     Educational and production-ready solar PV power yield calculator implementing:
     - Complete physics-based PV modeling theory
     - Real meteorological data integration  
-    - Multi-Factor Loss calculations
+    - Multi-Factor loss calculations
     - Industry-standard performance metrics
     
     This code serves as both a practical tool and a tutorial on PV system modeling
     for technical audiences, with extensive documentation of underlying physics.
 
 Author: Dragos Ruiu
-Version: 1.0.0
-Date: 2025-07-05
+Version: 1.0.1
+Date: 205-07-05
+
+Requirements:
+    - Python 3.7 or higher
+    - pandas >= 1.0.0
+    - numpy >= 1.18.0
+    - requests >= 2.25.0
+    - pvlib >= 0.9.0
+
+Installation:
+    pip install pandas numpy requests pvlib
+    
+    Or use the automatic installer when prompted.
 
 Theory Overview:
     Solar PV power generation follows the fundamental equation:
@@ -74,7 +86,133 @@ from typing import Dict, Tuple, Optional, Union, Any
 from dataclasses import dataclass
 from pathlib import Path
 
-# Third-party imports
+# Python version check
+if sys.version_info < (3, 7):
+    print(f"Error: Python 3.7 or higher required. You have {sys.version}")
+    sys.exit(1)
+
+# Third-party imports with automatic installation option
+required_packages = {
+    'pandas': 'pandas',
+    'numpy': 'numpy', 
+    'requests': 'requests',
+    'pvlib': 'pvlib'
+}
+
+missing_packages = []
+
+# Check for missing packages
+for import_name, package_name in required_packages.items():
+    try:
+        __import__(import_name)
+    except ImportError:
+        missing_packages.append(package_name)
+
+# Handle missing packages
+if missing_packages:
+    print("=" * 60)
+    print("PV--PowerEstimate.py - Missing Required Packages")
+    print("=" * 60)
+    print(f"\nThe following packages are not installed:")
+    for pkg in missing_packages:
+        print(f"  - {pkg}")
+    
+    # Detect if we're in an externally managed environment
+    externally_managed = False
+    try:
+        import sysconfig
+        import pathlib
+        stdlib = sysconfig.get_path('stdlib')
+        marker_file = pathlib.Path(stdlib) / 'EXTERNALLY-MANAGED'
+        externally_managed = marker_file.exists()
+    except:
+        pass
+    
+    if externally_managed:
+        print("\n⚠️  Detected externally-managed Python environment (PEP 668)")
+        print("   This is common on Ubuntu 23.04+, Debian 12+, and similar.")
+        print("   Will use '--user' installation to avoid system conflicts.")
+    
+    print("\nInstallation options:")
+    print("\n1. Install to user directory (recommended):")
+    print(f"   python3 -m pip install --user {' '.join(missing_packages)}")
+    
+    print("\n2. Install in a virtual environment (best practice):")
+    print("   python3 -m venv pv_env")
+    print("   source pv_env/bin/activate  # On Windows: pv_env\\Scripts\\activate")
+    print(f"   pip install {' '.join(missing_packages)}")
+    
+    if not externally_managed:
+        print("\n3. Install system-wide (requires sudo):")
+        print(f"   sudo python3 -m pip install {' '.join(missing_packages)}")
+    
+    # Ask user if they want to install automatically
+    print("\n" + "-" * 60)
+    try:
+        response = input("\nInstall packages to user directory automatically? (y/n): ").strip().lower()
+        if response == 'y':
+            print("\nInstalling packages to user directory...")
+            import subprocess
+            
+            # Try to install packages with --user flag
+            try:
+                # First, ensure pip is up to date
+                print("Updating pip...")
+                subprocess.check_call([
+                    sys.executable, '-m', 'pip', 'install', '--user', '--upgrade', 'pip'
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                
+                # Install the missing packages
+                print(f"Installing {', '.join(missing_packages)}...")
+                subprocess.check_call([
+                    sys.executable, '-m', 'pip', 'install', '--user'] + missing_packages
+                )
+                
+                print("\n✅ Packages installed successfully!")
+                print("\n⚠️  IMPORTANT: You may need to add the user install directory to PATH.")
+                
+                # Check if user site-packages is in PATH
+                import site
+                user_site = site.getusersitepackages()
+                user_base = site.USER_BASE
+                user_bin = os.path.join(user_base, 'bin')
+                
+                if user_bin not in os.environ.get('PATH', ''):
+                    print(f"\nAdd this to your ~/.bashrc or ~/.profile:")
+                    print(f'export PATH="$PATH:{user_bin}"')
+                    print(f"\nThen run: source ~/.bashrc")
+                
+                print("\nPlease run the script again.")
+                sys.exit(0)
+                
+            except subprocess.CalledProcessError as e:
+                print(f"\n❌ Error installing packages: {e}")
+                
+                # Try alternative approaches
+                print("\nTrying alternative installation method...")
+                try:
+                    # Try using pip directly as a module
+                    import pip
+                    pip.main(['install', '--user'] + missing_packages)
+                except:
+                    print("\nAutomatic installation failed. Please install manually:")
+                    print(f"python3 -m pip install --user {' '.join(missing_packages)}")
+                    print("\nIf that doesn't work, try:")
+                    print("1. Create a virtual environment:")
+                    print("   python3 -m venv pv_env")
+                    print("   source pv_env/bin/activate")
+                    print(f"   pip install {' '.join(missing_packages)}")
+                    sys.exit(1)
+        else:
+            print("\nPlease install the required packages manually and run again.")
+            print(f"\nRecommended command:")
+            print(f"python3 -m pip install --user {' '.join(missing_packages)}")
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n\nInstallation cancelled.")
+        sys.exit(1)
+
+# Now import the packages
 try:
     import requests
     import pandas as pd
@@ -83,9 +221,12 @@ try:
     from pvlib import pvsystem, modelchain, location
     from pvlib.temperature import TEMPERATURE_MODEL_PARAMETERS
 except ImportError as e:
-    print(f"Error: Required package not installed. {e}")
-    print("Please install required packages:")
-    print("pip install pandas numpy requests pvlib")
+    print(f"Error: Failed to import package after installation. {e}")
+    print("Please check your Python environment and PATH settings.")
+    print("\nIf you just installed packages with --user, you may need to:")
+    print("1. Restart your terminal")
+    print("2. Add user site-packages to PATH")
+    print("3. Or use a virtual environment")
     sys.exit(1)
 
 # Configure logging
@@ -1322,7 +1463,7 @@ P10 Estimate (10% probability): {annual_energy*1.08:,.0f} kWh
 
 ================================================================================
 End of Report - Generated by PV--PowerEstimate v{VERSION}
-Technical questions: contact@solaranalysistools.com
+Technical questions: dr@secwest.net
 ================================================================================
 """
         
