@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives
+PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives v1.2.2
 
 Copyright (c) 2025, Dragos Ruiu
 All rights reserved.
@@ -4045,7 +4045,7 @@ System Category: {"Residential" if system_size_dc <= 10 else "Commercial" if sys
 Typical Installed Cost: ${default_cost_per_watt:.2f}/W DC
 Total System Cost Estimate: ${system_cost:,.0f}
 Simple Payback Period: {system_cost / annual_revenue:.1f} years (before incentives, no rate escalation)
-Enhanced Payback Period: {(system_cost - total_incentive_value) / annual_revenue / (1 + electricity_escalation_rate/2):.1f} years (with 3% rate escalation)
+Future Rate Increase Payback Period: {(system_cost - total_incentive_value) / annual_revenue / (1 + electricity_escalation_rate/2):.1f} years (with 3% rate escalation)
 
 {SolarIncentiveManager.format_incentive_summary(incentives, system_size_dc, system_cost, annual_energy) if incentives else "No specific incentives found for this location."}
 
@@ -4062,7 +4062,7 @@ Total Incentive Value: ${total_incentive_value:,.0f}
 Net Cost After Incentives: ${net_system_cost:,.0f}
 Simple Payback (No Incentives): {system_cost / annual_revenue:.1f} years
 Simple Payback with Incentives: {payback_with_incentives:.1f} years (no escalation)
-Enhanced Payback with Incentives: {enhanced_payback_years} years (with 3% rate escalation)
+Future Rate Increase Payback with Incentives: {enhanced_payback_years} years (with 3% rate escalation)
 25-Year Cash Flow: ${cumulative_savings:,.0f}
 25-Year Net Profit: ${cumulative_savings - net_system_cost:,.0f}
 Effective Cost per Watt: ${net_system_cost / (system_size_dc * 1000):.2f}/W
@@ -4529,7 +4529,7 @@ def main():
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='PV-PowerEstimate: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
+        description='PV-PowerEstimate v1.2.2: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -4919,7 +4919,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 
         else:
             # Interactive mode
-            print("\nPV-PowerEstimate - Solar PV Power Yield Calculator (Global Edition with Incentives)")
+            print("\nPV-PowerEstimate v1.2.2 - Solar PV Power Yield Calculator (Global Edition with Incentives)")
             print("=" * 50)
             print("\nThis tool estimates solar panel energy production for any location worldwide.")
             print("It uses real weather data and detailed physics modeling.")
@@ -5127,6 +5127,11 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         annual_revenue = annual_energy * electricity_rate
         payback_years = system_cost_estimate / annual_revenue
         
+        # Future rate increase financial calculations with rate escalation
+        electricity_escalation_rate = 0.03  # 3% annual increase
+        discount_rate = 0.05  # 5% discount rate
+        system_life = 25  # years
+        
         # Get applicable incentives
         print("Checking for applicable incentives...")
         if calc.location_info:
@@ -5151,6 +5156,42 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         
         net_system_cost = system_cost_estimate - total_incentive_value
         payback_with_incentives = net_system_cost / annual_revenue if annual_revenue > 0 else float('inf')
+        
+        # Calculate NPV and enhanced payback with electricity rate escalation
+        npv_savings = 0
+        cumulative_savings = 0
+        enhanced_payback_years = 0
+        enhanced_payback_with_incentives = 0
+        
+        for year in range(1, system_life + 1):
+            # Degradation: -0.5% per year after year 1
+            year_degradation = 1.0 if year == 1 else (1 - 0.005 * (year - 1))
+            year_production = annual_energy * year_degradation
+            
+            # Electricity price with escalation
+            year_electricity_rate = electricity_rate * ((1 + electricity_escalation_rate) ** (year - 1))
+            year_revenue = year_production * year_electricity_rate
+            
+            # NPV calculation
+            npv_savings += year_revenue / ((1 + discount_rate) ** year)
+            cumulative_savings += year_revenue
+            
+            if cumulative_savings >= system_cost_estimate and enhanced_payback_years == 0:
+                enhanced_payback_years = year
+                
+            if cumulative_savings >= net_system_cost and enhanced_payback_with_incentives == 0:
+                enhanced_payback_with_incentives = year
+        
+        # Additional savings for commercial customers
+        if system_size > 10:  # Commercial system
+            # Demand charge savings (conservative estimate)
+            demand_charge_savings = system_size * 5 * 12  # $5/kW/month typical
+            annual_revenue += demand_charge_savings
+            
+        # Time-of-use benefit (if applicable)
+        if electricity_rate > 0.15:  # Higher rate areas often have TOU
+            tou_multiplier = 1.15  # 15% benefit from producing during peak hours
+            annual_revenue *= tou_multiplier
         
         # CO2 savings
         co2_saved = annual_energy * 0.4  # kg CO2 per kWh (global average)
@@ -5220,14 +5261,37 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"   System Cost: ${system_cost_estimate:,.0f} (at ${cost_per_watt}/W installed)")
         print(f"   Annual Value: ${annual_revenue:,.0f} (at ${electricity_rate:.3f}/kWh)")
         print(f"   Simple Payback: {payback_years:.1f} years (before incentives)")
+        print(f"   Future Rate Increase Payback: {enhanced_payback_years} years (with 3% rate escalation)")
         
         if incentives:
-            print(f"   Payback with Incentives: {payback_with_incentives:.1f} years")
-            print(f"   20-Year Savings: ${(annual_revenue * 20) - net_system_cost:,.0f}")
+            print(f"   Simple Payback with Incentives: {payback_with_incentives:.1f} years")
+            print(f"   Future Rate Increase Payback with Incentives: {enhanced_payback_with_incentives} years (with escalation)")
+            print(f"   25-Year Net Profit: ${cumulative_savings - net_system_cost:,.0f}")
         else:
-            print(f"   20-Year Savings: ${(annual_revenue * 20) - system_cost_estimate:,.0f}")
+            print(f"   25-Year Net Profit: ${cumulative_savings - system_cost_estimate:,.0f}")
         
+        print(f"\n💰 FUTURE RATE INCREASE FINANCIAL ANALYSIS:")
+        print(f"   NPV of Energy Savings: ${npv_savings:,.0f} (25-year, 3% escalation, 5% discount)")
+        print(f"   Net Present Value: ${npv_savings - net_system_cost:,.0f}")
+        print(f"   Internal Rate of Return: {((npv_savings / net_system_cost) ** (1/25) - 1) * 100:.1f}%")
+        print(f"   Levelized Cost of Energy: ${net_system_cost / (annual_energy * 25 * 0.87):,.3f}/kWh")
+        
+        print(f"\n🌍 ENVIRONMENTAL IMPACT:")
         print(f"   CO2 Avoided: {co2_saved/1000:.1f} metric tons/year")
+        print(f"   25-Year CO2 Reduction: {co2_saved * 25 * 0.87 / 1000:.0f} metric tons")
+        
+        # Commercial benefits if applicable
+        if system_size > 10:
+            print(f"\n🏢 COMMERCIAL BENEFITS:")
+            print(f"   Demand Charge Savings: ${system_size * 5 * 12:,.0f}/year (estimated)")
+            print(f"   Peak Shaving Benefit: Reduces peak demand charges")
+            print(f"   Grid Independence: Improved resilience during outages")
+        
+        if electricity_rate > 0.15:
+            print(f"\n⏰ TIME-OF-USE BENEFITS:")
+            print(f"   Solar production aligns with peak rate periods")
+            print(f"   Estimated TOU benefit: 15% revenue increase")
+            print(f"   Consider battery storage for maximum TOU savings")
         
         # Monthly variation
         best_month = monthly['energy_kwh'].idxmax()
