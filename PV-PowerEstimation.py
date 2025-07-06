@@ -4016,7 +4016,9 @@ FINANCIAL SUMMARY WITH INCENTIVES
 System Cost: ${system_cost:,.0f}
 Total Incentive Value: ${total_incentive_value:,.0f}
 Net Cost After Incentives: ${net_system_cost:,.0f}
+Simple Payback (No Incentives): {system_cost / annual_revenue:.1f} years
 Payback Period with Incentives: {payback_with_incentives:.1f} years
+Payback Reduction from Incentives: {(system_cost / annual_revenue) - payback_with_incentives:.1f} years
 20-Year Net Savings: ${(annual_revenue * 20) - net_system_cost:,.0f}
 Effective Cost per Watt: ${net_system_cost / (system_size_dc * 1000):.2f}/W
 
