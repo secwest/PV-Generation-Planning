@@ -171,18 +171,21 @@ PRACTICAL DESIGN EXAMPLES
    - Area needed: ~30-40 m²
    - Annual yield: 5,000-8,000 kWh
    - Typical PR: 75-80%
+   - Mounting: glass_polymer + close_mount
 
 2. COMMERCIAL FLAT ROOF (100 kW):
    - Modules: 250 × 400W panels
    - Area needed: ~600-800 m²
    - Tilt: 10-15° (balance yield vs wind/ballast)
    - Row spacing: Avoid self-shading
+   - Mounting: glass_glass + open_rack (ballasted)
 
 3. UTILITY SCALE (10 MW):
    - Modules: 25,000 × 400W
    - Land area: 15-20 hectares
    - Tracking: +25-35% yield gain
    - Higher PR: 80-85%
+   - Mounting: glass_glass + open_rack (tracked)
 
 ECONOMIC CONSIDERATIONS
 -----------------------
@@ -303,6 +306,14 @@ from pathlib import Path
 if sys.version_info < (3, 7):
     print(f"Error: Python 3.7 or higher required. You have {sys.version}")
     sys.exit(1)
+
+# Configure logging FIRST, before any logger usage
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 # Third-party imports with automatic installation option
 required_packages = {
@@ -543,18 +554,13 @@ try:
     import pvlib
     from pvlib import pvsystem, modelchain, location
     from pvlib.temperature import TEMPERATURE_MODEL_PARAMETERS
+    
+    # Log pvlib version for debugging (using logger that's now defined)
+    logger.info(f"Using pvlib version: {pvlib.__version__}")
 except ImportError as e:
     print(f"Error: Failed to import package after installation. {e}")
     print("Please check your Python environment.")
     sys.exit(1)
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
 
 # Suppress pvlib warnings for cleaner output
 warnings.filterwarnings('ignore', module='pvlib')
@@ -610,6 +616,17 @@ class SystemConfig:
     - Commercial: 10-500 kW typical
     - Utility: >1 MW (1000+ kW)
     
+    MOUNTING OPTIONS:
+    =================
+    Module Types:
+    - glass_glass: Double glass modules (bifacial capable)
+    - glass_polymer: Glass front, polymer backsheet (standard)
+    
+    Racking Models:
+    - open_rack: Ground/pole mount with good airflow
+    - close_mount: Roof mount with minimal air gap
+    - insulated_back: Building integrated (BIPV)
+    
     Loss Factor Physics:
     Each loss mechanism has a physical basis that affects energy production:
     - Optical losses (soiling, shading): Reduce incoming irradiance
@@ -656,9 +673,9 @@ class SystemConfig:
     # MOUNTING CONFIGURATION
     # Affects cell temperature via convective cooling
     # T_cell = T_ambient + ΔT, where ΔT depends on mounting
-    # Open rack: Good airflow, ΔT ≈ 25-30°C at 1000 W/m²
-    # Roof mount: Restricted airflow, ΔT ≈ 30-35°C
-    # Building integrated: Poor cooling, ΔT ≈ 35-45°C
+    # Module type: 'glass_glass' or 'glass_polymer'
+    # Racking model: 'open_rack', 'close_mount', 'insulated_back'
+    module_type: str = 'glass_glass'
     racking_model: str = 'open_rack'
     
     # LOSS FACTORS - Each represents a physical mechanism
@@ -779,7 +796,7 @@ class AddressGeocoder:
         self.session = requests.Session()
         # OSM requires a user agent
         self.session.headers.update({
-            'User-Agent': f'PV-PowerEstimate/{VERSION} (https://github.com/yourusername/pv-estimate)'
+            'User-Agent': f'PV-PowerEstimate/{VERSION} (https://github.com/secwest/PV-Generation-Planning)'
         })
     
     def geocode(self, address: str) -> Optional[Tuple[float, float]]:
@@ -794,7 +811,7 @@ class AddressGeocoder:
             
         Example:
             >>> geocoder = AddressGeocoder()
-            >>> coords = geocoder.geocode("1600 Pennsylvania Ave, Washington DC")
+            >>> coords = geocoder.geocode("111 Wellington Street, Ottawa, Ontario")
             >>> print(f"Lat: {coords[0]}, Lon: {coords[1]}")
         """
         try:
@@ -1454,9 +1471,9 @@ class SolarPVCalculator:
             if system_config is None:
                 system_config = SystemConfig()
                 # TILT OPTIMIZATION RULES:
-                # Annual: tilt = latitude
-                # Summer: tilt = latitude - 15°
-                # Winter: tilt = latitude + 15°
+                # Annual energy: tilt = latitude
+                # Summer emphasis: tilt = latitude - 15°
+                # Winter emphasis: tilt = latitude + 15°
                 system_config.surface_tilt = abs(self.lat)
                 # AZIMUTH FOR HEMISPHERE:
                 # Northern: 180° (south-facing)
@@ -1466,6 +1483,7 @@ class SolarPVCalculator:
             
             logger.info(f"System size: {system_config.system_size_kw:.1f} kW")
             logger.info(f"Tilt: {system_config.surface_tilt}°, Azimuth: {system_config.surface_azimuth}°")
+            logger.info(f"Module type: {system_config.module_type}, Racking: {system_config.racking_model}")
             logger.info(f"Total loss factor: {system_config.total_loss_factor:.1%}")
             
             # MODULE ELECTRICAL PARAMETERS
@@ -1503,13 +1521,16 @@ class SolarPVCalculator:
                 inverter_parameters=inverter_params,
                 modules_per_string=system_config.modules_per_string,
                 strings_per_inverter=system_config.strings_per_inverter,
+                module_type=system_config.module_type,
                 racking_model=system_config.racking_model
             )
             
-            # TEMPERATURE MODEL PARAMETERS
-            # Empirically derived for different mounting configurations
-            # ΔT = POA_irradiance × exp(a + b×wind_speed)
-            temp_params = TEMPERATURE_MODEL_PARAMETERS['sapm'][system_config.racking_model]
+            # TEMPERATURE MODEL NOTE
+            # The combination of module_type and racking_model automatically
+            # sets appropriate temperature model parameters:
+            # - 'glass_glass' + 'open_rack': Well-ventilated ground mount
+            # - 'glass_polymer' + 'close_mount': Standard rooftop
+            # - 'glass_glass' + 'insulated_back': Building integrated
             
             # CREATE MODELCHAIN
             # Links all component models in correct sequence
@@ -1522,12 +1543,10 @@ class SolarPVCalculator:
                 aoi_model='physical',
                 
                 # Spectral model: Corrects for non-AM1.5 spectra
-                # 'first_solar' or 'sapm' for advanced corrections
                 spectral_model='no_loss',  # Simplified
                 
                 # Temperature model: Cell temp from weather
-                temperature_model='sapm',
-                temperature_model_parameters=temp_params
+                temperature_model='sapm'
             )
             
             # RUN THE SIMULATION
@@ -1695,6 +1714,7 @@ class SolarPVCalculator:
         # Best and worst months
         best_month = monthly['energy_kwh'].idxmax()
         worst_month = monthly['energy_kwh'].idxmin()
+        variation = monthly.loc[best_month, 'energy_kwh'] / monthly.loc[worst_month, 'energy_kwh']
         
         # Calculate insolation utilization
         # How much of available solar resource is captured
@@ -1727,7 +1747,7 @@ Inverter Size: {system_config.inverter_power/1000:.1f} kW AC
 DC/AC Ratio: {system_size_dc/(system_config.inverter_power/1000):.2f}
 Tilt Angle: {system_config.surface_tilt:.1f}°
 Azimuth: {system_config.surface_azimuth:.0f}° ({self._azimuth_to_direction(system_config.surface_azimuth)})
-Mounting: {system_config.racking_model.replace('_', ' ').title()}
+Mounting: {system_config.module_type.replace('_', ' ').title()} / {system_config.racking_model.replace('_', ' ').title()}
 
 ANNUAL PERFORMANCE SUMMARY
 --------------------------
@@ -1846,7 +1866,8 @@ TECHNICAL RECOMMENDATIONS
 3. Temperature Management:
    Average cell temp excess: {results['cell_temperature'].mean() - 25:.1f}°C
    Annual temperature losses: {annual_energy * abs(results['temperature_loss'].mean())/100:.0f} kWh
-   → Consider enhanced ventilation or higher efficiency modules
+   → Consider enhanced ventilation or different mounting type
+   → Open rack mounting typically runs 3-5°C cooler than roof mount
 
 4. System Monitoring:
    - Real-time performance ratio tracking
@@ -2020,15 +2041,15 @@ def main():
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='PV--PowerEstimate: Comprehensive Solar PV Power Yield Calculator',
+        description='PV-PowerEstimate: Comprehensive Solar PV Power Yield Calculator',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --lat 37.7749 --lon -122.4194
-  %(prog)s --address "1600 Pennsylvania Ave, Washington DC"
+  %(prog)s --lat 45.4215 --lon -75.6972
+  %(prog)s --address "111 Wellington Street, Ottawa, Ontario"
   %(prog)s --lat 51.5074 --lon -0.1278 --system-size 10 --tilt 35
 
-For more information, visit: https://github.com/yourusername/pv-powerestimate
+For more information, visit: https://github.com/secwest/PV-Generation-Planning
         """
     )
     
@@ -2042,7 +2063,7 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
     location_group.add_argument(
         '--address', '-a',
         type=str,
-        help='Street address or location name (e.g., "Denver, CO" or "10 Downing St, London")'
+        help='Street address or location name (e.g., "Toronto, ON" or "111 Wellington St, Ottawa")'
     )
     
     parser.add_argument(
@@ -2083,6 +2104,20 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
         type=float,
         default=400,
         help='Power rating of each solar panel in watts (default: 400W). Modern panels: 350-600W'
+    )
+    
+    parser.add_argument(
+        '--module-type',
+        choices=['glass_glass', 'glass_polymer'],
+        default='glass_glass',
+        help='Module construction type (default: glass_glass)'
+    )
+    
+    parser.add_argument(
+        '--racking-model',
+        choices=['open_rack', 'close_mount', 'insulated_back'],
+        default='open_rack',
+        help='Mounting configuration (default: open_rack)'
     )
     
     # Data source selection
@@ -2173,9 +2208,14 @@ Residential (USA Average):
 - 1 kW system = ~1,400 kWh/year
 - Average home uses ~10,000 kWh/year
 - Typical system: 5-8 kW
+- Usually glass_polymer + close_mount
 
 Space Requirements:
 - 1 kW ≈ 3-4 panels ≈ 60-80 sq ft
+
+Commercial/Industrial:
+- Flat roofs: glass_glass + open_rack with ballast
+- Ground mount: glass_glass + open_rack on posts
 
 ORIENTATION GUIDELINES
 ----------------------
@@ -2265,6 +2305,11 @@ Module: Individual solar panel
 MPPT: Maximum Power Point Tracking (optimizes power)
 String: Solar panels connected in series
 BOS: Balance of System (everything except panels)
+Mounting/Racking: Support structure for panels
+  - Module types: glass_glass or glass_polymer backsheet
+  - open_rack: Ground or pole mounted with airflow
+  - close_mount: Attached to building roof
+  - insulated_back: Building integrated PV (BIPV)
 
 PERFORMANCE METRICS
 -------------------
@@ -2314,6 +2359,9 @@ Bifacial: Panels producing from both sides
 Spectral Response: Efficiency vs light wavelength
 Tracking: System that follows sun movement
 Grid Parity: Solar cost equals grid electricity
+Backsheet: Rear protective layer of module
+  - glass_glass: Glass on both sides (bifacial capable)
+  - glass_polymer: Traditional polymer backing
 
 ================================================================================
 For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
@@ -2380,7 +2428,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                     
             elif choice == '2':
                 print("\n🏠 ADDRESS ENTRY")
-                print("Examples: '123 Main St, Denver, CO' or just 'Tokyo, Japan'")
+                print("Examples: '123 Main St, Toronto, ON' or just 'Vancouver, BC'")
                 address = input("Address: ").strip()
                 if address:
                     geocoder = AddressGeocoder()
@@ -2417,6 +2465,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 system_config = SystemConfig()
             
             # Ask about tilt
+                        
             print("\n📐 TILT ANGLE")
             print(f"Recommended tilt for your latitude ({abs(latitude):.1f}°): {abs(latitude):.0f}°")
             print("Flatter = better for summer, Steeper = better for winter & snow shedding")
@@ -2429,6 +2478,10 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                     system_config.surface_tilt = abs(latitude)
             else:
                 system_config.surface_tilt = abs(latitude)
+            
+            # Set standard mounting type
+            system_config.module_type = 'glass_glass'
+            system_config.racking_model = 'open_rack'
             
             # Set azimuth based on hemisphere
             system_config.surface_azimuth = 180 if latitude > 0 else 0
@@ -2499,6 +2552,8 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         system_config.module_power = args.module_power
         system_config.surface_tilt = args.tilt if args.tilt else abs(calc.lat)
         system_config.surface_azimuth = args.azimuth
+        system_config.module_type = args.module_type
+        system_config.racking_model = args.racking_model
         
         # Size inverter appropriately (DC/AC ratio of 1.2)
         system_config.inverter_power = system_config.system_size_kw * 1000 / 1.2
