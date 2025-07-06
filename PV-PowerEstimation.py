@@ -2049,6 +2049,11 @@ Examples:
   %(prog)s --address "111 Wellington Street, Ottawa, Ontario"
   %(prog)s --lat 51.5074 --lon -0.1278 --system-size 10 --tilt 35
 
+Output Control:
+  By default, the full report is printed to console AND saved to files.
+  Use --no-print to suppress console output (still shows summary)
+  Use --no-save to prevent saving files
+
 For more information, visit: https://github.com/secwest/PV-Generation-Planning
         """
     )
@@ -2146,6 +2151,12 @@ For more information, visit: https://github.com/secwest/PV-Generation-Planning
         '--no-save',
         action='store_true',
         help='Do not save results to files'
+    )
+    
+    parser.add_argument(
+        '--no-print',
+        action='store_true',
+        help='Do not print full report to console (still shows summary)'
     )
     
     parser.add_argument(
@@ -2576,7 +2587,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         
         # Display key results
         print("\n" + "=" * 60)
-        print("RESULTS SUMMARY")
+        print("🌟 RESULTS SUMMARY 🌟")
         print("=" * 60)
         print(f"📍 Location: {calc.location.name}")
         print(f"⚡ System Size: {system_size:.1f} kW DC")
@@ -2606,6 +2617,9 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         # Capacity factor interpretation
         print(f"   Capacity Factor: {capacity_factor:.1f}% (typical solar: 15-25%)")
         
+        # Peak power
+        peak_power = results['ac_power'].max()
+        
         # Payback estimate
         system_cost_estimate = system_size * 2000  # Rough $2/W installed
         payback_years = system_cost_estimate / (annual_energy * 0.15)
@@ -2615,11 +2629,24 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         co2_saved = annual_energy * 0.4  # kg CO2 per kWh (US grid average)
         print(f"   CO2 Avoided: {co2_saved/1000:.1f} metric tons/year")
         
+        # Performance ratio
+        pr = system_config.total_loss_factor * 100
+        
         # Monthly variation
         best_month = monthly['energy_kwh'].idxmax()
         worst_month = monthly['energy_kwh'].idxmin()
         variation = monthly.loc[best_month, 'energy_kwh'] / monthly.loc[worst_month, 'energy_kwh']
         print(f"   Seasonal Variation: {variation:.1f}:1 ({best_month} vs {worst_month})")
+        
+        # Print monthly breakdown
+        print("\n📅 MONTHLY BREAKDOWN:")
+        print("   Month      Energy (kWh)    Daily Avg    % of Annual")
+        print("   " + "-" * 50)
+        for month, row in monthly.iterrows():
+            pct_of_annual = (row['energy_kwh'] / annual_energy) * 100
+            bar_length = int(pct_of_annual / 2)  # Scale to fit
+            bar = "█" * bar_length
+            print(f"   {month:<10} {row['energy_kwh']:>12,.0f}    {row['daily_energy']:>8.1f}    {pct_of_annual:>5.1f}% {bar}")
         
         print("\n💡 RECOMMENDATIONS:")
         if capacity_factor < 15:
@@ -2633,19 +2660,53 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         
         print("=" * 60)
         
-        # Save results unless disabled
-        if not args.no_save:
-            print(f"\nSaving results to {args.output}/")
-            # Store system size in results for metadata
-            results.attrs['system_size'] = system_size
-            calc.save_results(results, monthly, report, args.output)
-            print(f"Report saved to {args.output}/report.txt")
-        else:
-            # Print full report to console
+        # Quick performance summary table
+        print("\n📊 PERFORMANCE SUMMARY TABLE:")
+        print("   " + "-" * 50)
+        print(f"   {'Metric':<30} {'Value':>20}")
+        print("   " + "-" * 50)
+        print(f"   {'System Size (DC)':<30} {system_size:>19.1f} kW")
+        print(f"   {'Annual Production':<30} {annual_energy:>17,.0f} kWh")
+        print(f"   {'Daily Average':<30} {annual_energy/365:>19.1f} kWh")
+        print(f"   {'Specific Yield':<30} {annual_specific_yield:>15,.0f} kWh/kWp")
+        print(f"   {'Capacity Factor':<30} {capacity_factor:>19.1f}%")
+        print(f"   {'Performance Ratio':<30} {pr:>19.1f}%")
+        print(f"   {'Peak Power Output':<30} {peak_power:>19.1f} kW")
+        print(f"   {'CO2 Avoided':<30} {co2_saved/1000:>19.1f} tons/yr")
+        print(f"   {'Annual Value (@$0.15/kWh)':<30} ${annual_energy * 0.15:>18,.0f}")
+        print(f"   {'Simple Payback':<30} {payback_years:>19.1f} years")
+        print("   " + "-" * 50)
+        
+        # Print the full report to console unless --no-print is specified
+        if not args.no_print:
             print("\nFULL REPORT:")
             print(report)
+        else:
+            print("\n(Full report not printed. Remove --no-print flag to see it)")
         
-        print("\nAnalysis complete!")
+        # Visual separator
+        print("\n" + "=" * 60)
+        print("FILE OPERATIONS")
+        print("=" * 60)
+        
+        # Save results unless disabled
+        if not args.no_save:
+            print(f"\nSaving results to {args.output}/...")
+            # Store system size in results for metadata
+            results.attrs['system_size'] = system_size
+            try:
+                calc.save_results(results, monthly, report, args.output)
+                print(f"\n✅ Results saved successfully:")
+                print(f"   📄 Report: {args.output}/report.txt")
+                print(f"   📊 Hourly data: {args.output}/hourly_output.csv")
+                print(f"   📅 Monthly summary: {args.output}/monthly_summary.csv")
+                print(f"   ⚙️  Metadata: {args.output}/metadata.json")
+            except Exception as e:
+                print(f"\n❌ Error saving files: {e}")
+        else:
+            print("\n⚠️  File saving disabled (--no-save flag active)")
+        
+        print("\n🎉 Analysis complete!")
         return 0
         
     except KeyboardInterrupt:
