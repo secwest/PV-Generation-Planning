@@ -32,15 +32,240 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-Description:
-    Educational and production-ready solar PV power yield calculator implementing:
-    - Complete physics-based PV modeling theory
-    - Real meteorological data integration  
-    - Multi-Factor loss calculations
-    - Industry-standard performance metrics
-    
-    This code serves as both a practical tool and a tutorial on PV system modeling
-    for technical audiences, with extensive documentation of underlying physics.
+================================================================================
+PV SYSTEM DESIGN AND ESTIMATION TUTORIAL
+================================================================================
+
+This tool serves as both a practical calculator and an educational resource for
+understanding solar photovoltaic system design and energy yield estimation.
+
+QUICK START GUIDE
+-----------------
+1. Basic residential system (5kW in San Francisco):
+   python PV-PowerEstimate.py --address "San Francisco, CA" --system-size 5
+
+2. Commercial system with custom tilt:
+   python PV-PowerEstimate.py --lat 40.7 --lon -74.0 --system-size 100 --tilt 10
+
+3. Interactive mode for beginners:
+   python PV-PowerEstimate.py
+
+UNDERSTANDING PV SYSTEMS - THE BASICS
+-------------------------------------
+A photovoltaic system converts sunlight into electricity through several stages:
+
+   Sunlight → PV Modules → DC Electricity → Inverter → AC Electricity → Grid/Load
+      ↓           ↓              ↓             ↓              ↓
+   [Irradiance] [Temperature] [Wiring]   [Efficiency]   [Usable Power]
+
+Key Concepts:
+- IRRADIANCE: Power of sunlight per unit area (W/m²)
+- EFFICIENCY: Ratio of electrical output to solar input (%)
+- YIELD: Total energy produced over time (kWh)
+- CAPACITY FACTOR: Average output / Rated capacity (%)
+
+FUNDAMENTAL EQUATION
+--------------------
+The core physics of PV systems:
+
+    P = G × A × η × PR
+
+Where:
+- P = Power output (W)
+- G = Solar irradiance on panel plane (W/m²)
+- A = Total array area (m²)
+- η = Module efficiency at current conditions (%)
+- PR = Performance ratio (all losses combined) (%)
+
+Example Calculation:
+- G = 1000 W/m² (bright sunshine)
+- A = 50 m² (about 25 modern panels)
+- η = 20% (good quality panels)
+- PR = 80% (well-designed system)
+- P = 1000 × 50 × 0.20 × 0.80 = 8,000 W = 8 kW
+
+SOLAR RESOURCE ASSESSMENT
+-------------------------
+Understanding your local solar resource is crucial:
+
+1. DIRECT vs DIFFUSE RADIATION
+   
+   Direct (DNI): Straight from sun → Can be concentrated → Strong shadows
+   Diffuse (DHI): Scattered by atmosphere → Blue sky light → No shadows
+   Global (GHI): Total on horizontal = DNI × cos(zenith) + DHI
+
+2. TYPICAL VALUES BY CLIMATE:
+   - Desert: 2000-2400 kWh/m²/year (high irradiance)
+   - Mediterranean: 1600-2000 kWh/m²/year (above average)
+   - Temperate: 1000-1400 kWh/m²/year (moderate)
+   - Cloudy/Northern: 800-1200 kWh/m²/year (below average)
+
+3. SEASONAL VARIATION:
+   Summer/Winter ratio varies by latitude:
+   - Equator: ~1.2:1 (minimal variation)
+   - 30° latitude: ~2:1 
+   - 45° latitude: ~3:1
+   - 60° latitude: ~5:1 or more
+
+SYSTEM DESIGN PRINCIPLES
+------------------------
+1. TILT ANGLE OPTIMIZATION:
+   
+   Purpose          Recommended Tilt      Example (40° latitude)
+   -------------------------------------------------------------
+   Annual Max       Latitude              40°
+   Summer Max       Latitude - 15°       25°
+   Winter Max       Latitude + 15°       55°
+   Snow Shedding    Latitude + 20-30°    60-70°
+
+2. AZIMUTH ORIENTATION:
+   
+   Direction    Azimuth    Effect on Annual Yield
+   -----------------------------------------------
+   South        180°       100% (reference orientation in N hemisphere)
+   SE/SW        135°/225°  95-97%
+   E/W          90°/270°   85-88%
+   NE/NW        45°/315°   70-75%
+   North        0°         40-60%
+
+3. SHADING ANALYSIS:
+   Even small shadows can cause large losses:
+   - 10% shading can cause 30% power loss
+   - Morning/evening shadows less critical
+   - Winter shadows more impactful at high latitudes
+
+LOSS FACTORS - DETAILED BREAKDOWN
+---------------------------------
+Real systems experience various losses:
+
+1. TEMPERATURE LOSSES (5-15%):
+   - Silicon loses ~0.4%/°C above 25°C
+   - Cell temp = Ambient + 25-35°C typically
+   - Example: 40°C ambient → 65°C cell → 16% loss
+
+2. SOILING LOSSES (1-5%):
+   - Dust accumulation reduces transmission
+   - Rain provides natural cleaning
+   - Desert/agricultural areas worse
+   - Optimal cleaning frequency: Loss% × Revenue > Cleaning cost
+
+3. MISMATCH LOSSES (1-3%):
+   - Modules vary ±3% from nameplate
+   - Series strings limited by weakest module
+   - Minimized by binning/sorting
+
+4. WIRING LOSSES (1-3%):
+   - I²R losses in DC and AC cables
+   - Higher currents = higher losses
+   - Proper sizing critical
+
+5. INVERTER LOSSES (2-4%):
+   - Peak efficiency ~97-98%
+   - Lower at partial loads
+   - Clipping at high DC/AC ratios
+
+PRACTICAL DESIGN EXAMPLES
+-------------------------
+1. RESIDENTIAL ROOFTOP (5 kW):
+   - Modules: 12-15 × 400W panels
+   - Area needed: ~30-40 m²
+   - Annual yield: 5,000-8,000 kWh
+   - Typical PR: 75-80%
+
+2. COMMERCIAL FLAT ROOF (100 kW):
+   - Modules: 250 × 400W panels
+   - Area needed: ~600-800 m²
+   - Tilt: 10-15° (balance yield vs wind/ballast)
+   - Row spacing: Avoid self-shading
+
+3. UTILITY SCALE (10 MW):
+   - Modules: 25,000 × 400W
+   - Land area: 15-20 hectares
+   - Tracking: +25-35% yield gain
+   - Higher PR: 80-85%
+
+ECONOMIC CONSIDERATIONS
+-----------------------
+Key metrics for financial analysis:
+
+1. LCOE (Levelized Cost of Energy):
+   LCOE = (Total Costs) / (Total Energy over Lifetime)
+   Typical: $0.03-0.08/kWh for utility scale
+
+2. PAYBACK PERIOD:
+   Years = (System Cost) / (Annual Revenue)
+   Typical: 5-10 years residential
+
+3. DEGRADATION:
+   - Year 1: -1.5% (LID)
+   - Years 2-25: -0.5-0.7%/year
+   - 25-year output: ~80-85% of initial
+
+TROUBLESHOOTING GUIDE
+---------------------
+Common issues and solutions:
+
+1. LOWER THAN EXPECTED YIELD:
+   - Check shading (winter analysis important)
+   - Verify tilt/azimuth installation
+   - Inspect for soiling
+   - Confirm inverter settings
+
+2. SEASONAL VARIATIONS:
+   - Normal: 2-3x summer vs winter
+   - Abnormal: >4x variation (check shading)
+
+3. PERFORMANCE RATIO ISSUES:
+   - PR < 70%: System problems likely
+   - PR 70-75%: Below average
+   - PR 75-85%: Typical range
+   - PR > 85%: Above average (verify measurements)
+
+ADVANCED TOPICS
+---------------
+1. BIFACIAL MODULES:
+   - Capture rear-side irradiance
+   - Gain: 5-30% depending on albedo
+   - Best with: High ground reflectance, elevated mounting
+
+2. TRACKING SYSTEMS:
+   - Single-axis: +20-30% yield
+   - Dual-axis: +30-40% yield
+   - Economics: Higher CAPEX vs yield gain
+
+3. SPECTRAL EFFECTS:
+   - Module response varies by wavelength
+   - AM1.5 standard spectrum
+   - Seasonal/weather variations ±2-3%
+
+4. GRID INTEGRATION:
+   - Voltage regulation requirements
+   - Power factor control
+   - Ramp rate limitations
+   - Curtailment possibilities
+
+USING THIS TOOL EFFECTIVELY
+---------------------------
+1. START SIMPLE:
+   - Use defaults to understand basics
+   - Modify one parameter at a time
+   - Compare results
+
+2. REALISTIC INPUTS:
+   - Shading: Be conservative
+   - Soiling: Consider local conditions
+   - Degradation: Plan for 25 years
+
+3. INTERPRET RESULTS:
+   - Focus on specific yield (kWh/kWp)
+   - Compare to regional benchmarks
+   - Consider uncertainty (±10%)
+
+4. NEXT STEPS:
+   - Professional shading analysis
+   - Structural/electrical engineering
+   - Detailed financial modeling
+   - Permitting requirements
 
 Author: Dragos Ruiu
 Version: 1.0.1
@@ -58,19 +283,7 @@ Installation:
     
     Or use the automatic installer when prompted.
 
-Theory Overview:
-    Solar PV power generation follows the fundamental equation:
-    
-    P = G × A × η × PR
-    
-    Where:
-    - P = Power output (W)
-    - G = Solar irradiance on panel plane (W/m²)
-    - A = Total array area (m²)
-    - η = Module efficiency at current conditions
-    - PR = Performance ratio (product of all loss factors)
-    
-    This implementation models each component with detailed physics.
+For more detailed theory, see inline documentation throughout the code.
 """
 
 # Standard library imports
@@ -371,6 +584,32 @@ class SystemConfig:
     Encapsulates all system design choices and loss factors with their
     physical basis and typical ranges based on industry standards.
     
+    QUICK REFERENCE - TYPICAL LOSS VALUES:
+    ======================================
+    
+    Loss Type            Low     Average    High    Notes
+    ---------------------------------------------------------
+    Soiling              1-2%    2-3%       4-6%    Desert/farm worse
+    Shading              0-2%    3-5%       >10%    Site-specific
+    Snow                 0%      0-5%       5-10%   Climate-dependent
+    Mismatch             1-2%    2-3%       3-4%    Quality matters
+    DC Wiring            0.5-1%  1-2%       2-3%    Distance matters
+    Connections          0.5%    0.5-1%     1-2%    Maintenance helps
+    LID (first year)     1-2%    1.5-2%     2-3%    Technology-dependent
+    Nameplate            0-1%    1-2%       2-3%    Buy quality
+    Degradation/year     0.5%    0.5-0.7%   0.8%    Linear after year 1
+    Availability         1-2%    2-3%       3-5%    Regular O&M needed
+    
+    Total PR (typical)   85%     80%        70%     Performance Ratio
+    
+    DESIGN RULES OF THUMB:
+    ======================
+    - 1 kW ≈ 3-4 panels ≈ 60-80 ft² ≈ 6-8 m²
+    - 1 kW produces 1,000-2,000 kWh/year (location-dependent)
+    - Residential: 3-10 kW typical
+    - Commercial: 10-500 kW typical
+    - Utility: >1 MW (1000+ kW)
+    
     Loss Factor Physics:
     Each loss mechanism has a physical basis that affects energy production:
     - Optical losses (soiling, shading): Reduce incoming irradiance
@@ -507,9 +746,9 @@ class SystemConfig:
         Theory: Losses multiply (not add) because they act in series
         PR = ∏(1 - loss_i) for all loss factors
         
-        Typical good PR: 0.75-0.85 (75-85%)
+        Typical PR: 0.75-0.85 (75-85%)
         Below 0.75: Investigate system issues
-        Above 0.85: Very well-optimized system
+        Above 0.85: High-performing system
         """
         losses = [
             self.soiling_loss, self.shading_loss, self.snow_loss,
@@ -1051,9 +1290,9 @@ class SolarPVCalculator:
     def calculate_pv_output(self, weather_data: pd.DataFrame, 
                            system_config: Optional[SystemConfig] = None) -> Tuple[pd.DataFrame, float]:
         """
-        Calculate PV system power output using comprehensive physics models.
+        Calculate PV system power output using physics models.
         
-        COMPLETE PHOTOVOLTAIC MODELING CHAIN:
+        PHOTOVOLTAIC MODELING CHAIN:
         =====================================
         
         1. SOLAR POSITION CALCULATION (Astronomical Algorithms)
@@ -1477,16 +1716,47 @@ MONTHLY ENERGY PRODUCTION
 Month    Energy (kWh)    Specific Yield    Daily Avg    Cell Temp
 -------  -------------   --------------    ---------    ---------"""
         
+        # Create simple bar chart for monthly production
+        max_energy = monthly['energy_kwh'].max()
+        
         for idx, (month, row) in enumerate(monthly.iterrows()):
             report += f"\n{month:<7}  {row['energy_kwh']:>12,.0f}    "
             report += f"{row['specific_yield']:>8.0f} kWh/kWp    "
             report += f"{row['daily_energy']:>8.1f}    "
             report += f"{row['cell_temperature']:>8.1f}°C"
             
+            # Add visual bar
+            bar_length = int(row['energy_kwh'] / max_energy * 20)
+            report += "  " + "█" * bar_length
+            
             if month == best_month:
                 report += " ← Best"
             elif month == worst_month:
                 report += " ← Worst"
+        
+        # Add seasonal pattern visualization
+        report += f"""
+
+SEASONAL PATTERN
+----------------"""
+        
+        # Adjust seasonal labels based on hemisphere
+        if self.lat > 0:  # Northern hemisphere
+            report += """
+Winter  ████████░░░░░░░░░░░░  Low sun angle, short days
+Spring  ████████████████░░░░  Increasing production
+Summer  ████████████████████  Peak production
+Fall    ████████████████░░░░  Decreasing production"""
+        else:  # Southern hemisphere
+            report += """
+Summer  ████████████████████  Peak production
+Fall    ████████████████░░░░  Decreasing production  
+Winter  ████████░░░░░░░░░░░░  Low sun angle, short days
+Spring  ████████████████░░░░  Increasing production"""
+        
+        report += f"""
+
+Your location shows {variation:.1f}:1 seasonal variation ({best_month} vs {worst_month})"""
         
         report += f"""
 
@@ -1530,8 +1800,8 @@ TECHNICAL RECOMMENDATIONS
 -------------------------
 1. Tilt Angle Optimization:
    Current: {system_config.surface_tilt:.0f}° | Latitude: {abs(self.lat):.0f}°
-   {"✓ Well optimized for annual yield" if abs(system_config.surface_tilt - abs(self.lat)) < 5 else "→ Consider adjusting tilt closer to latitude"}
-   Potential gain from optimization: ~{max(0, 5-abs(system_config.surface_tilt - abs(self.lat))):.0f}%
+   {"✓ Within 5° of latitude angle" if abs(system_config.surface_tilt - abs(self.lat)) < 5 else "→ Consider adjusting tilt closer to latitude"}
+   Potential gain from adjustment: ~{max(0, 5-abs(system_config.surface_tilt - abs(self.lat))):.0f}%
 
 2. Soiling Management:
    {self._get_cleaning_recommendation(system_config.soiling_loss)}
@@ -1554,6 +1824,43 @@ TECHNICAL RECOMMENDATIONS
    - Bifacial Modules: 5-15% gain with {0.2:.1f} ground albedo
    - Module Upgrade: Latest high-efficiency could add 10-20% capacity
 
+UNDERSTANDING YOUR RESULTS
+--------------------------
+This simulation used:
+- Typical Meteorological Year (TMY) data representing long-term averages
+- Hour-by-hour solar position calculations (8,760 data points)
+- Temperature-dependent efficiency modeling
+- Industry-standard loss factors
+
+Key Metrics Explained:
+- kWh (kilowatt-hour): Energy unit, like "miles" for your car
+- kW (kilowatt): Power unit, like "horsepower" for your car
+- Specific Yield: Energy per installed capacity - allows fair comparison
+- Capacity Factor: Average output / maximum possible output
+- Performance Ratio: Actual performance / theoretical performance
+
+NEXT STEPS
+----------
+1. Save this report for reference
+2. Get quotes from 3+ local installers
+3. Ask installers about:
+   - Equipment warranties (25+ years for panels)
+   - Performance guarantees
+   - Monitoring systems
+   - Maintenance plans
+
+4. Financial considerations:
+   - Federal/state/local incentives
+   - Net metering policies
+   - Time-of-use rates
+   - Financing options
+
+5. Technical validation:
+   - Professional shading analysis
+   - Structural engineering review
+   - Electrical system compatibility
+   - Utility interconnection requirements
+
 UNCERTAINTY ANALYSIS
 --------------------
 This assessment uncertainty: ±8-10%
@@ -1570,6 +1877,7 @@ P10 Estimate (10% probability): {annual_energy*1.08:,.0f} kWh
 ================================================================================
 End of Report - Generated by PV-PowerEstimate v{VERSION}
 Technical questions: dr@secwest.net
+Educational resources: Run with --help-tutorial for detailed guide
 ================================================================================
 """
         
@@ -1693,24 +2001,24 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
     location_group.add_argument(
         '--lat', '--latitude',
         type=float,
-        help='Latitude in decimal degrees (-90 to 90)'
+        help='Latitude in decimal degrees (-90 to 90). Positive = North, Negative = South. Find yours at maps.google.com'
     )
     location_group.add_argument(
         '--address', '-a',
         type=str,
-        help='Street address or location name'
+        help='Street address or location name (e.g., "Denver, CO" or "10 Downing St, London")'
     )
     
     parser.add_argument(
         '--lon', '--longitude',
         type=float,
-        help='Longitude in decimal degrees (-180 to 180)'
+        help='Longitude in decimal degrees (-180 to 180). Positive = East, Negative = West'
     )
     
     parser.add_argument(
         '--altitude', '--elevation',
         type=float,
-        help='Altitude in meters (optional, will be fetched if not provided)'
+        help='Altitude in meters above sea level. Higher = more sun but cooler. Optional - will be auto-detected'
     )
     
     # System configuration arguments
@@ -1718,27 +2026,27 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
         '--system-size',
         type=float,
         default=DEFAULT_SYSTEM_SIZE,
-        help=f'System size in kW (default: {DEFAULT_SYSTEM_SIZE})'
+        help=f'Total system size in kW DC (default: {DEFAULT_SYSTEM_SIZE}). Residential: 3-10kW, Commercial: 10-500kW'
     )
     
     parser.add_argument(
         '--tilt',
         type=float,
-        help='Panel tilt angle in degrees (default: latitude)'
+        help='Panel tilt angle in degrees from horizontal (0=flat, 90=vertical). Default: your latitude. Steeper helps with snow'
     )
     
     parser.add_argument(
         '--azimuth',
         type=float,
         default=180,
-        help='Panel azimuth in degrees, 180=South (default: 180)'
+        help='Panel direction in degrees (0=North, 90=East, 180=South, 270=West). Default: 180 (South) for Northern hemisphere'
     )
     
     parser.add_argument(
         '--module-power',
         type=float,
         default=400,
-        help='Individual module power in watts (default: 400)'
+        help='Power rating of each solar panel in watts (default: 400W). Modern panels: 350-600W'
     )
     
     # Data source selection
@@ -1781,8 +2089,202 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
         version=f'%(prog)s {VERSION}'
     )
     
+    parser.add_argument(
+        '--help-tutorial',
+        action='store_true',
+        help='Show PV system design tutorial and theory guide'
+    )
+    
+    parser.add_argument(
+        '--help-glossary',
+        action='store_true',
+        help='Show glossary of technical terms used in solar PV'
+    )
+    
     # Parse arguments
     args = parser.parse_args()
+    
+    # Show tutorial if requested
+    if hasattr(args, 'help_tutorial') and args.help_tutorial:
+        tutorial_text = """
+================================================================================
+                        PV SYSTEM DESIGN TUTORIAL
+================================================================================
+
+UNDERSTANDING SOLAR ENERGY BASICS
+---------------------------------
+Solar panels convert sunlight to electricity through the photovoltaic effect.
+Key factors affecting energy production:
+
+1. LOCATION (Most Important)
+   - Latitude affects sun angles and day length
+   - Climate determines cloud cover
+   - Local shading from buildings/trees
+
+2. SYSTEM DESIGN
+   - Panel orientation (tilt and azimuth)
+   - System size and module efficiency
+   - Inverter sizing and efficiency
+
+3. ENVIRONMENTAL FACTORS
+   - Temperature (hot panels produce less)
+   - Soiling (dust, snow, bird droppings)
+   - Weather patterns (clouds, rain)
+
+QUICK SIZING GUIDE
+------------------
+Residential (USA Average):
+- 1 kW system = ~1,400 kWh/year
+- Average home uses ~10,000 kWh/year
+- Typical system: 5-8 kW
+
+Space Requirements:
+- 1 kW ≈ 3-4 panels ≈ 60-80 sq ft
+
+ORIENTATION GUIDELINES
+----------------------
+Tilt Angle:
+- Annual average = Your latitude
+- Summer emphasis = Latitude - 15°
+- Winter emphasis = Latitude + 15°
+- Flat roofs: 10-15° minimum
+
+Direction (Azimuth):
+- 180° (South) = Standard orientation for Northern hemisphere
+- ±45° from South = 5-10% reduction
+- East/West = 15-20% reduction
+
+INTERPRETING RESULTS
+--------------------
+Specific Yield (kWh/kWp/year):
+- <1000: Below average (cloudy/shaded locations)
+- 1000-1300: Average
+- 1300-1600: Above average
+- 1600-2000: High yield
+- >2000: Very high (desert climates)
+
+Performance Ratio (%):
+- <70%: System has problems
+- 70-75%: Below average
+- 75-80%: Average
+- 80-85%: Above average
+- >85%: High performance
+
+COMMON MISTAKES TO AVOID
+------------------------
+1. Ignoring shading (even partial shade hurts)
+2. Undersizing wire (causes power loss)
+3. Poor ventilation (hot panels = less power)
+4. Wrong tilt for goal (summer vs winter vs annual)
+5. Forgetting degradation (0.5%/year typical)
+
+NEXT STEPS
+----------
+1. Run this tool with your location
+2. Get multiple installer quotes
+3. Check local incentives/rebates
+4. Consider battery storage
+5. Monitor actual vs predicted
+
+For more help: python PV-PowerEstimate.py --help
+================================================================================
+"""
+        print(tutorial_text)
+        sys.exit(0)
+    
+    # Show glossary if requested
+    if hasattr(args, 'help_glossary') and args.help_glossary:
+        glossary_text = """
+================================================================================
+                    SOLAR PV GLOSSARY OF TERMS
+================================================================================
+
+ELECTRICAL TERMS
+----------------
+AC (Alternating Current): Electricity type used by grid and appliances
+DC (Direct Current): Electricity type produced by solar panels
+kW (kilowatt): Power unit, 1 kW = 1,000 watts
+kWh (kilowatt-hour): Energy unit, 1 kWh = using 1 kW for 1 hour
+kWp (kilowatt-peak): DC power rating at Standard Test Conditions
+MW (megawatt): 1,000 kW, used for large systems
+
+SOLAR TERMS
+-----------
+Azimuth: Compass direction panels face (0°=N, 90°=E, 180°=S, 270°=W)
+GHI (Global Horizontal Irradiance): Total sunlight on flat surface
+DNI (Direct Normal Irradiance): Direct beam sunlight
+DHI (Diffuse Horizontal Irradiance): Scattered sunlight from sky
+Irradiance: Instantaneous solar power per area (W/m²)
+Irradiation: Solar energy over time (kWh/m²)
+Insolation: Amount of solar radiation reaching a surface
+POA (Plane of Array): Irradiance on tilted panel surface
+Solar Noon: Time when sun is highest in sky
+Zenith Angle: Angle between sun and vertical
+
+SYSTEM COMPONENTS
+-----------------
+Array: Multiple solar panels connected together
+Inverter: Converts DC from panels to AC for grid
+Module: Individual solar panel
+MPPT: Maximum Power Point Tracking (optimizes power)
+String: Solar panels connected in series
+BOS: Balance of System (everything except panels)
+
+PERFORMANCE METRICS
+-------------------
+Capacity Factor: Average output / maximum possible output (%)
+Degradation: Power loss over time (~0.5%/year)
+Efficiency: Power out / power in (%)
+Performance Ratio (PR): Actual / theoretical yield (%)
+Specific Yield: Annual energy / system size (kWh/kWp)
+Yield: Total energy produced
+
+LOSS MECHANISMS
+---------------
+Clipping: Power loss when DC exceeds inverter capacity
+LID: Light-Induced Degradation (first-year power loss)
+Mismatch: Loss from unequal module performance
+Shading: Shadows reducing power (can be severe)
+Soiling: Dirt/dust on panels reducing light
+Temperature Loss: Power reduction in hot conditions
+
+FINANCIAL TERMS
+---------------
+LCOE: Levelized Cost of Energy ($/kWh over lifetime)
+NPV: Net Present Value of investment
+Payback Period: Years to recover investment
+PPA: Power Purchase Agreement
+ROI: Return on Investment
+
+TECHNICAL PARAMETERS
+--------------------
+Albedo: Ground reflectance (0=black, 1=mirror)
+AM: Air Mass (atmosphere thickness effect)
+AOI: Angle of Incidence (between sun ray and panel normal)
+STC: Standard Test Conditions (1000 W/m², 25°C, AM1.5)
+Temperature Coefficient: Power change per °C (~-0.4%/°C)
+Tilt: Panel angle from horizontal (0°=flat)
+
+WEATHER/CLIMATE
+---------------
+TMY: Typical Meteorological Year (representative weather)
+Ambient Temperature: Air temperature
+Cell Temperature: Solar cell operating temperature
+Wind Speed: Affects panel cooling
+
+ADVANCED CONCEPTS
+-----------------
+Bifacial: Panels producing from both sides
+Spectral Response: Efficiency vs light wavelength
+Tracking: System that follows sun movement
+Grid Parity: Solar cost equals grid electricity
+
+================================================================================
+For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
+================================================================================
+"""
+        print(glossary_text)
+        sys.exit(0)
     
     # Configure logging based on quiet flag
     if args.quiet:
@@ -1818,15 +2320,20 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
             # Interactive mode
             print("\nPV-PowerEstimate - Solar PV Power Yield Calculator")
             print("=" * 50)
+            print("\nThis tool estimates solar panel energy production for any location.")
+            print("It uses real weather data and detailed physics modeling.")
+            print("\nNeed help? Run with --help-tutorial for a comprehensive guide.")
             print("\nEnter location (choose one option):")
             print("1. Enter coordinates (latitude, longitude)")
-            print("2. Enter address")
+            print("2. Enter address (street, city, etc.)")
             
             choice = input("\nChoice (1 or 2): ").strip()
             
             if choice == '1':
-                lat_str = input("Latitude (-90 to 90): ").strip()
-                lon_str = input("Longitude (-180 to 180): ").strip()
+                print("\n📍 COORDINATE ENTRY")
+                print("Tip: Find coordinates at maps.google.com (right-click → copy coordinates)")
+                lat_str = input("Latitude (-90 to 90, negative for Southern hemisphere): ").strip()
+                lon_str = input("Longitude (-180 to 180, negative for Western hemisphere): ").strip()
                 
                 try:
                     latitude = float(lat_str)
@@ -1836,6 +2343,8 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
                     return 1
                     
             elif choice == '2':
+                print("\n🏠 ADDRESS ENTRY")
+                print("Examples: '123 Main St, Denver, CO' or just 'Tokyo, Japan'")
                 address = input("Address: ").strip()
                 if address:
                     geocoder = AddressGeocoder()
@@ -1843,12 +2352,72 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
                     
                     if coords:
                         latitude, longitude = coords
+                        print(f"✓ Found coordinates: {latitude:.4f}, {longitude:.4f}")
                     else:
                         print(f"Error: Could not geocode address '{address}'")
                         return 1
             else:
                 print("Invalid choice")
                 return 1
+            
+            # Ask about system size
+            print("\n⚡ SYSTEM SIZE")
+            print("Typical sizes: Residential 3-10 kW, Commercial 10-500 kW, Utility >1000 kW")
+            print("Rule of thumb: 1 kW ≈ 3-4 panels ≈ 1,400 kWh/year (varies by location)")
+            
+            size_str = input(f"System size in kW (press Enter for default {DEFAULT_SYSTEM_SIZE} kW): ").strip()
+            if size_str:
+                try:
+                    system_size = float(size_str)
+                    # Calculate modules needed
+                    modules_needed = int(system_size * 1000 / 400)  # Assuming 400W modules
+                    system_config = SystemConfig()
+                    system_config.modules_per_string = min(modules_needed, 20)
+                    system_config.strings_per_inverter = max(1, modules_needed // 20)
+                except ValueError:
+                    print("Invalid size, using default")
+                    system_config = SystemConfig()
+            else:
+                system_config = SystemConfig()
+            
+            # Ask about tilt
+            print("\n📐 TILT ANGLE")
+            print(f"Recommended tilt for your latitude ({abs(latitude):.1f}°): {abs(latitude):.0f}°")
+            print("Flatter = better for summer, Steeper = better for winter & snow shedding")
+            
+            tilt_str = input(f"Tilt angle in degrees (press Enter for latitude-based default): ").strip()
+            if tilt_str:
+                try:
+                    system_config.surface_tilt = float(tilt_str)
+                except ValueError:
+                    system_config.surface_tilt = abs(latitude)
+            else:
+                system_config.surface_tilt = abs(latitude)
+            
+            # Set azimuth based on hemisphere
+            system_config.surface_azimuth = 180 if latitude > 0 else 0
+            
+            # Helper function for azimuth direction
+            def azimuth_to_direction(azimuth):
+                directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+                             'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+                index = int((azimuth + 11.25) / 22.5) % 16
+                return directions[index]
+            
+            print("\n🎯 Using standard azimuth (direction) for your hemisphere")
+            print(f"   Azimuth: {system_config.surface_azimuth}° ({azimuth_to_direction(system_config.surface_azimuth)})")
+            
+            # Add some educational info before calculation
+            print("\n" + "="*50)
+            print("📊 STARTING CALCULATION")
+            print("="*50)
+            print("This tool will:")
+            print("1. Fetch typical weather data for your location")
+            print("2. Calculate sun angles for every hour of the year")
+            print("3. Model panel temperature effects")
+            print("4. Apply real-world loss factors")
+            print("5. Generate detailed energy production estimates")
+            print("="*50 + "\n")
         
         # Validate we have location
         if latitude is None or longitude is None:
@@ -1918,12 +2487,59 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
         print("\n" + "=" * 60)
         print("RESULTS SUMMARY")
         print("=" * 60)
-        print(f"Location: {calc.location.name}")
-        print(f"System Size: {system_size:.1f} kW")
-        print(f"Annual Energy: {annual_energy:,.0f} kWh")
-        print(f"Specific Yield: {annual_specific_yield:,.0f} kWh/kWp")
-        print(f"Capacity Factor: {capacity_factor:.1f}%")
-        print(f"Est. Annual Revenue: ${annual_energy * 0.15:,.0f} (at $0.15/kWh)")
+        print(f"📍 Location: {calc.location.name}")
+        print(f"⚡ System Size: {system_size:.1f} kW DC")
+        print(f"📊 Annual Energy: {annual_energy:,.0f} kWh/year")
+        print(f"📈 Specific Yield: {annual_specific_yield:,.0f} kWh/kWp/year")
+        print(f"⚙️  Capacity Factor: {capacity_factor:.1f}%")
+        print(f"💰 Est. Annual Revenue: ${annual_energy * 0.15:,.0f} (at $0.15/kWh)")
+        print("=" * 60)
+        
+        # Add interpretation of results
+        print("\n📋 RESULTS INTERPRETATION:")
+        
+        # Specific yield interpretation
+        if annual_specific_yield < 1000:
+            yield_rating = "Below average - Check for shading or consider different location"
+        elif annual_specific_yield < 1300:
+            yield_rating = "Average - Typical for cloudy/northern climates"
+        elif annual_specific_yield < 1600:
+            yield_rating = "Above average - Well-suited for solar"
+        elif annual_specific_yield < 2000:
+            yield_rating = "High - Strong solar resource"
+        else:
+            yield_rating = "Very high - Desert-like conditions"
+        
+        print(f"   Specific Yield Rating: {yield_rating}")
+        
+        # Capacity factor interpretation
+        print(f"   Capacity Factor: {capacity_factor:.1f}% (typical solar: 15-25%)")
+        
+        # Payback estimate
+        system_cost_estimate = system_size * 2000  # Rough $2/W installed
+        payback_years = system_cost_estimate / (annual_energy * 0.15)
+        print(f"   Simple Payback: ~{payback_years:.1f} years (at $2/W installed cost)")
+        
+        # CO2 savings
+        co2_saved = annual_energy * 0.4  # kg CO2 per kWh (US grid average)
+        print(f"   CO2 Avoided: {co2_saved/1000:.1f} metric tons/year")
+        
+        # Monthly variation
+        best_month = monthly['energy_kwh'].idxmax()
+        worst_month = monthly['energy_kwh'].idxmin()
+        variation = monthly.loc[best_month, 'energy_kwh'] / monthly.loc[worst_month, 'energy_kwh']
+        print(f"   Seasonal Variation: {variation:.1f}:1 ({best_month} vs {worst_month})")
+        
+        print("\n💡 RECOMMENDATIONS:")
+        if capacity_factor < 15:
+            print("   - Consider checking shading or system design")
+        if variation > 3:
+            print("   - High seasonal variation - consider battery storage")
+        if annual_specific_yield > 1500:
+            print("   - Above-average solar resource for investment")
+        print("   - Get multiple installer quotes for accurate pricing")
+        print("   - Check local incentives and net metering policies")
+        
         print("=" * 60)
         
         # Save results unless disabled
@@ -1932,7 +2548,7 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
             # Store system size in results for metadata
             results.attrs['system_size'] = system_size
             calc.save_results(results, monthly, report, args.output)
-            print(f"Complete report saved to {args.output}/report.txt")
+            print(f"Report saved to {args.output}/report.txt")
         else:
             # Print full report to console
             print("\nFULL REPORT:")
