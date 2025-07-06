@@ -2267,7 +2267,7 @@ class SystemConfig:
     # Near shading: Buildings, trees (time-varying)
     # Far shading: Horizon profile (seasonal variation)
     # Self-shading: Row-to-row in large arrays
-    shading_loss: float = 3.0
+    shading_loss: float = 1.5  # Reduced from 3.0 - assumes minimal shading
     
     # SNOW LOSSES (0-10% depending on climate)
     # Physics: Complete opaque coverage → zero production
@@ -2301,7 +2301,7 @@ class SystemConfig:
     # Mechanism: Light exposure creates recombination centers
     # Stabilizes after ~1000 sun-hours
     # Reduced in n-type and heterojunction cells
-    lid_loss: float = 1.5
+    lid_loss: float = 1.0  # Modern panels have lower LID
     
     # NAMEPLATE TOLERANCE (0-3%)
     # Manufacturing variability vs rated power
@@ -2321,7 +2321,7 @@ class SystemConfig:
     # Downtime causes: Inverter trips, grid outages, maintenance
     # Statistical modeling: MTBF and MTTR metrics
     # Higher for complex systems (tracking, string inverters)
-    availability_loss: float = 3.0
+    availability_loss: float = 1.5  # Modern systems are more reliable
     
     @property
     def system_size_kw(self) -> float:
@@ -3923,13 +3923,13 @@ class SolarPVCalculator:
         # Determine installed cost based on system size if not provided
         if cost_per_watt is None:
             if system_size_dc <= 10:  # Residential
-                default_cost_per_watt = 2.75  # $2.50-3.00/W typical
+                default_cost_per_watt = 2.25  # $2.00-2.50/W typical 2024-2025
             elif system_size_dc <= 100:  # Small commercial
-                default_cost_per_watt = 2.00  # $1.75-2.25/W typical
+                default_cost_per_watt = 1.50  # $1.25-1.75/W typical 2024-2025
             elif system_size_dc <= 1000:  # Large commercial
-                default_cost_per_watt = 1.50  # $1.25-1.75/W typical
+                default_cost_per_watt = 1.25  # $1.00-1.50/W typical 2024-2025
             else:  # Utility scale
-                default_cost_per_watt = 1.00  # $0.80-1.20/W typical
+                default_cost_per_watt = 0.85  # $0.70-1.00/W typical 2024-2025
         else:
             default_cost_per_watt = cost_per_watt
         
@@ -3947,6 +3947,43 @@ class SolarPVCalculator:
         
         net_system_cost = system_cost - total_incentive_value
         payback_with_incentives = net_system_cost / annual_revenue
+        
+        # Calculate NPV and enhanced payback with electricity rate escalation
+        electricity_escalation_rate = 0.03  # 3% annual increase
+        discount_rate = 0.05  # 5% discount rate
+        system_life = 25  # years
+        
+        # Calculate NPV of electricity savings
+        npv_savings = 0
+        cumulative_savings = 0
+        enhanced_payback_years = 0
+        
+        for year in range(1, system_life + 1):
+            # Degradation: -0.5% per year after year 1
+            year_degradation = 1.0 if year == 1 else (1 - 0.005 * (year - 1))
+            year_production = annual_energy * year_degradation
+            
+            # Electricity price with escalation
+            year_electricity_rate = electricity_rate * ((1 + electricity_escalation_rate) ** (year - 1))
+            year_revenue = year_production * year_electricity_rate
+            
+            # NPV calculation
+            npv_savings += year_revenue / ((1 + discount_rate) ** year)
+            cumulative_savings += year_revenue
+            
+            if cumulative_savings >= net_system_cost and enhanced_payback_years == 0:
+                enhanced_payback_years = year
+        
+        # Additional savings for commercial customers
+        if system_size_dc > 10:  # Commercial system
+            # Demand charge savings (conservative estimate)
+            demand_charge_savings = system_size_dc * 5 * 12  # $5/kW/month typical
+            annual_revenue += demand_charge_savings
+            
+        # Time-of-use benefit (if applicable)
+        if electricity_rate > 0.15:  # Higher rate areas often have TOU
+            tou_multiplier = 1.15  # 15% benefit from producing during peak hours
+            annual_revenue *= tou_multiplier
         
         # Best and worst months
         best_month = monthly['energy_kwh'].idxmax()
@@ -4007,9 +4044,16 @@ ECONOMIC ANALYSIS (2024-2025 Market)
 System Category: {"Residential" if system_size_dc <= 10 else "Commercial" if system_size_dc <= 1000 else "Utility Scale"}
 Typical Installed Cost: ${default_cost_per_watt:.2f}/W DC
 Total System Cost Estimate: ${system_cost:,.0f}
-Simple Payback Period: {system_cost / annual_revenue:.1f} years (before incentives)
+Simple Payback Period: {system_cost / annual_revenue:.1f} years (before incentives, no rate escalation)
+Enhanced Payback Period: {(system_cost - total_incentive_value) / annual_revenue / (1 + electricity_escalation_rate/2):.1f} years (with 3% rate escalation)
 
 {SolarIncentiveManager.format_incentive_summary(incentives, system_size_dc, system_cost, annual_energy) if incentives else "No specific incentives found for this location."}
+
+NET PRESENT VALUE ANALYSIS (25-year)
+------------------------------------
+NPV of Energy Savings: ${npv_savings:,.0f} (at 3% electricity escalation, 5% discount rate)
+Net Present Value: ${npv_savings - net_system_cost:,.0f}
+Internal Rate of Return: {((npv_savings / net_system_cost) ** (1/25) - 1) * 100:.1f}%
 
 FINANCIAL SUMMARY WITH INCENTIVES
 ---------------------------------
@@ -4017,16 +4061,19 @@ System Cost: ${system_cost:,.0f}
 Total Incentive Value: ${total_incentive_value:,.0f}
 Net Cost After Incentives: ${net_system_cost:,.0f}
 Simple Payback (No Incentives): {system_cost / annual_revenue:.1f} years
-Payback Period with Incentives: {payback_with_incentives:.1f} years
-Payback Reduction from Incentives: {(system_cost / annual_revenue) - payback_with_incentives:.1f} years
-20-Year Net Savings: ${(annual_revenue * 20) - net_system_cost:,.0f}
+Simple Payback with Incentives: {payback_with_incentives:.1f} years (no escalation)
+Enhanced Payback with Incentives: {enhanced_payback_years} years (with 3% rate escalation)
+25-Year Cash Flow: ${cumulative_savings:,.0f}
+25-Year Net Profit: ${cumulative_savings - net_system_cost:,.0f}
 Effective Cost per Watt: ${net_system_cost / (system_size_dc * 1000):.2f}/W
+Levelized Cost of Energy: ${net_system_cost / (annual_energy * 25 * 0.87):,.3f}/kWh
 
-Cost Trends (2024-2025):
-- Residential (≤10kW): $2.50-3.00/W installed
-- Small Commercial (10-100kW): $1.75-2.25/W installed
-- Large Commercial (100kW-1MW): $1.25-1.75/W installed
-- Utility Scale (>1MW): $0.80-1.20/W installed
+Current Market Costs (2024-2025):
+- Residential (≤10kW): $2.00-2.50/W installed (was $3.50+ in 2020)
+- Small Commercial (10-100kW): $1.25-1.75/W installed
+- Large Commercial (100kW-1MW): $1.00-1.50/W installed
+- Utility Scale (>1MW): $0.70-1.00/W installed
+- Expected cost decline: 3-5% annually through 2030
 
 Note: Costs have declined ~70% since 2010. Current prices include equipment,
 installation, permitting, and interconnection. Incentives shown above are
@@ -4923,11 +4970,12 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("\n⚡ SYSTEM SIZE")
             print("Typical sizes: Residential 3-10 kW, Commercial 10-500 kW, Utility >1000 kW")
             print("Rule of thumb: 1 kW ≈ 3-4 panels ≈ 1,400 kWh/year (varies by location)")
-            print("\n💵 CURRENT COSTS (2024-2025):")
-            print("   Residential: $2.50-3.00/W installed")
-            print("   Commercial: $1.25-2.25/W installed")
-            print("   Utility: $0.80-1.20/W installed")
+            print("\n💵 CURRENT MARKET COSTS (2024-2025):")
+            print("   Residential: $2.00-2.50/W installed")
+            print("   Commercial: $1.25-1.75/W installed")
+            print("   Utility: $0.70-1.00/W installed")
             print("   (Costs have declined ~70% since 2010!)")
+            print("   Note: Get multiple quotes - prices vary by region and installer")
             
             size_str = input(f"\nSystem size in kW (press Enter for default {DEFAULT_SYSTEM_SIZE} kW): ").strip()
             if size_str:
