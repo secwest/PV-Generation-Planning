@@ -1092,11 +1092,47 @@ class SolarPVCalculator:
                 df = pd.DataFrame(tmy_data)
                 
                 # Parse timestamps - PVGIS uses UTC
-                current_year = year if year else datetime.now().year
-                df['datetime'] = pd.to_datetime(
-                    df['time(UTC)'].apply(lambda x: f"{current_year}/{x}"),
-                    format='%Y/%m/%d %H:%M'
-                )
+                # Handle different possible formats from PVGIS
+                try:
+                    # First, check what format we're getting
+                    sample_time = df['time(UTC)'].iloc[0]
+                    logger.info(f"PVGIS timestamp format sample: {sample_time}")
+                    
+                    # Try different parsing strategies
+                    if ':' in str(sample_time) and len(str(sample_time)) > 10:
+                        # Format like "20070101:0010" (YYYYMMDD:HHMM)
+                        df['datetime'] = pd.to_datetime(
+                            df['time(UTC)'].astype(str),
+                            format='%Y%m%d:%H%M'
+                        )
+                    elif '/' in str(sample_time):
+                        # Original format "MM/DD HH:MM"
+                        current_year = year if year else datetime.now().year
+                        df['datetime'] = pd.to_datetime(
+                            df['time(UTC)'].apply(lambda x: f"{current_year}/{x}"),
+                            format='%Y/%m/%d %H:%M'
+                        )
+                    else:
+                        # Try pandas auto-detection
+                        df['datetime'] = pd.to_datetime(df['time(UTC)'])
+                    
+                    # For TMY data, we typically want to use a reference year
+                    # Update the year to the requested year while keeping month/day/hour
+                    if year:
+                        df['datetime'] = df['datetime'].apply(
+                            lambda x: x.replace(year=year)
+                        )
+                    
+                except Exception as e:
+                    logger.error(f"Failed to parse PVGIS timestamps: {e}")
+                    logger.error(f"Sample timestamp: {df['time(UTC)'].iloc[0]}")
+                    # Try alternative parsing
+                    try:
+                        # Remove any year prefix and parse
+                        df['datetime'] = pd.to_datetime(df['time(UTC)'], format='mixed')
+                    except:
+                        raise ValueError(f"Unable to parse PVGIS timestamps. Format: {df['time(UTC)'].iloc[0]}")
+                
                 df.set_index('datetime', inplace=True)
                 
                 # Rename to pvlib conventions
@@ -2322,7 +2358,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("=" * 50)
             print("\nThis tool estimates solar panel energy production for any location.")
             print("It uses real weather data and detailed physics modeling.")
-            print("\nNeed help? Run with --help-tutorial for a comprehensive guide.")
+            print("\nNeed help? Run with --help-tutorial for a detailed guide.")
             print("\nEnter location (choose one option):")
             print("1. Enter coordinates (latitude, longitude)")
             print("2. Enter address (street, city, etc.)")
