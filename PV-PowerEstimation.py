@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial
+PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives
 
 Copyright (c) 2025, Dragos Ruiu
 All rights reserved.
@@ -308,7 +308,7 @@ USING THIS TOOL EFFECTIVELY
    - Permitting requirements
 
 Author: Dragos Ruiu
-Version: 1.1.0
+Version: 1.2.0
 Date: 2025-07-06
 
 Requirements:
@@ -335,7 +335,7 @@ import logging
 import argparse
 import warnings
 from datetime import datetime, timedelta
-from typing import Dict, Tuple, Optional, Union, Any
+from typing import Dict, Tuple, Optional, Union, Any, List
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -603,7 +603,7 @@ except ImportError as e:
 warnings.filterwarnings('ignore', module='pvlib')
 
 # Constants
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 DEFAULT_SYSTEM_SIZE = 8.0  # kW
 MIN_LATITUDE = -90.0
 MAX_LATITUDE = 90.0
@@ -617,6 +617,967 @@ NOMINATIM_API = "https://nominatim.openstreetmap.org/search"
 ELEVATION_API = "https://api.open-elevation.com/api/v1/lookup"
 PVGIS_API_BASE = "https://re.jrc.ec.europa.eu/api/v5_2/"
 NREL_API_BASE = "https://developer.nrel.gov/api/nsrdb/v2/solar/"
+
+
+# Comprehensive regional solar incentives database (2024-2025)
+# Values are in percentage of system cost or $/W for rebates
+SOLAR_INCENTIVES = {
+    # US STATES - All federal programs plus state-specific
+    "united states": {
+        # Federal incentive applies to all states
+        "federal": {
+            "type": "tax_credit",
+            "value": 0.30,  # 30% through 2032
+            "expires": "2032-12-31",
+            "notes": "Federal Investment Tax Credit (ITC)"
+        },
+        
+        # State-specific incentives
+        "california": {
+            "programs": [
+                {
+                    "name": "SGIP",
+                    "type": "rebate",
+                    "value": 0.20,  # $/Wh for storage
+                    "category": "battery",
+                    "notes": "Self-Generation Incentive Program for storage"
+                },
+                {
+                    "name": "DAC-SASH",
+                    "type": "rebate",
+                    "value": 3.00,  # $/W
+                    "category": "low-income",
+                    "notes": "Disadvantaged Communities Single-family Solar Homes"
+                },
+                {
+                    "name": "Property Tax Exclusion",
+                    "type": "tax_exemption",
+                    "value": 1.0,  # 100% exemption
+                    "notes": "Solar installations excluded from property tax"
+                }
+            ]
+        },
+        
+        "new york": {
+            "programs": [
+                {
+                    "name": "NY-Sun",
+                    "type": "rebate",
+                    "value": 0.20,  # $/W
+                    "category": "residential",
+                    "max_rebate": 5000,
+                    "notes": "Declining block incentive"
+                },
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.25,  # 25% of system cost
+                    "max_credit": 5000,
+                    "notes": "25% state tax credit"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                }
+            ]
+        },
+        
+        "massachusetts": {
+            "programs": [
+                {
+                    "name": "SMART",
+                    "type": "performance",
+                    "value": 0.15,  # $/kWh
+                    "duration": 20,  # years
+                    "notes": "Solar Massachusetts Renewable Target program"
+                },
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.15,  # 15% of system cost
+                    "max_credit": 1000,
+                    "notes": "15% state tax credit"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                }
+            ]
+        },
+        
+        "texas": {
+            "programs": [
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% property tax exemption for solar value"
+                },
+                {
+                    "name": "Austin Energy Rebate",
+                    "type": "rebate",
+                    "value": 2500,  # flat amount
+                    "category": "utility",
+                    "location": "Austin",
+                    "notes": "Austin Energy solar rebate"
+                },
+                {
+                    "name": "CPS Energy Rebate",
+                    "type": "rebate",
+                    "value": 0.60,  # $/W
+                    "category": "utility",
+                    "location": "San Antonio",
+                    "notes": "CPS Energy solar rebate"
+                }
+            ]
+        },
+        
+        "florida": {
+            "programs": [
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% property tax exemption"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                },
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,  # 1:1 credit
+                    "notes": "Full retail rate net metering"
+                }
+            ]
+        },
+        
+        "arizona": {
+            "programs": [
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.25,
+                    "max_credit": 1000,
+                    "notes": "25% state tax credit"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "No added property tax"
+                }
+            ]
+        },
+        
+        "colorado": {
+            "programs": [
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                },
+                {
+                    "name": "Xcel Energy Rebate",
+                    "type": "rebate",
+                    "value": 0.50,  # $/W
+                    "category": "utility",
+                    "notes": "Xcel Energy Solar*Rewards"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Renewable energy property tax exemption"
+                }
+            ]
+        },
+        
+        "new jersey": {
+            "programs": [
+                {
+                    "name": "SuSI",
+                    "type": "performance",
+                    "value": 90,  # $/MWh
+                    "duration": 15,
+                    "notes": "Successor Solar Incentive program"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Solar property tax exemption"
+                }
+            ]
+        },
+        
+        "illinois": {
+            "programs": [
+                {
+                    "name": "Illinois Shines",
+                    "type": "performance",
+                    "value": 0.0775,  # $/kWh for 15 years
+                    "duration": 15,
+                    "notes": "Adjustable Block Program"
+                },
+                {
+                    "name": "Solar for All",
+                    "type": "rebate",
+                    "value": 1.0,  # 100% for qualifying
+                    "category": "low-income",
+                    "notes": "Low-income solar program"
+                }
+            ]
+        },
+        
+        "maryland": {
+            "programs": [
+                {
+                    "name": "State Grant",
+                    "type": "rebate",
+                    "value": 1000,  # flat amount
+                    "category": "residential",
+                    "notes": "Residential Clean Energy Rebate"
+                },
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.30,
+                    "max_credit": 5000,
+                    "expires": "2025-12-31",
+                    "notes": "30% state tax credit through 2025"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% property tax exemption"
+                }
+            ]
+        },
+        
+        "minnesota": {
+            "programs": [
+                {
+                    "name": "Solar*Rewards",
+                    "type": "rebate",
+                    "value": 0.50,  # $/W
+                    "category": "utility",
+                    "notes": "Xcel Energy rebate"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Solar property tax exemption"
+                }
+            ]
+        },
+        
+        "oregon": {
+            "programs": [
+                {
+                    "name": "Solar + Storage Rebate",
+                    "type": "rebate",
+                    "value": 0.30,  # $/W
+                    "max_rebate": 5000,
+                    "category": "residential",
+                    "notes": "Oregon solar + storage rebate"
+                },
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.40,  # 40% for low-income
+                    "category": "low-income",
+                    "max_credit": 5000,
+                    "notes": "Enhanced credit for low-income"
+                }
+            ]
+        },
+        
+        # Additional states with basic incentives
+        "connecticut": {
+            "programs": [
+                {
+                    "name": "Residential Solar Investment",
+                    "type": "rebate",
+                    "value": 0.40,  # $/W
+                    "notes": "Green Bank incentive"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% property tax exemption"
+                }
+            ]
+        },
+        
+        "nevada": {
+            "programs": [
+                {
+                    "name": "NV Energy Rebate",
+                    "type": "rebate",
+                    "value": 0.15,  # $/W
+                    "category": "utility",
+                    "notes": "NV Energy solar rebate"
+                },
+                {
+                    "name": "Property Tax Abatement",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Property tax abatement"
+                }
+            ]
+        },
+        
+        "hawaii": {
+            "programs": [
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.35,  # 35%
+                    "max_credit": 5000,
+                    "notes": "35% state tax credit"
+                },
+                {
+                    "name": "Green Infrastructure Loan",
+                    "type": "loan",
+                    "value": 0.0,  # 0% interest
+                    "notes": "On-bill financing available"
+                }
+            ]
+        },
+        
+        "rhode island": {
+            "programs": [
+                {
+                    "name": "REF Solar Grant",
+                    "type": "rebate",
+                    "value": 0.85,  # $/W
+                    "max_rebate": 5000,
+                    "notes": "Renewable Energy Fund grant"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                }
+            ]
+        },
+        
+        "vermont": {
+            "programs": [
+                {
+                    "name": "State Incentive",
+                    "type": "rebate",
+                    "value": 0.40,  # $/W
+                    "notes": "Efficiency Vermont incentive"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                }
+            ]
+        },
+        
+        "new mexico": {
+            "programs": [
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.10,  # 10%
+                    "max_credit": 6000,
+                    "notes": "10% state tax credit"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% property tax exemption"
+                }
+            ]
+        },
+        
+        "iowa": {
+            "programs": [
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.30,  # 30%
+                    "max_credit": 5000,
+                    "notes": "30% state tax credit"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "duration": 5,  # years
+                    "notes": "5-year property tax exemption"
+                }
+            ]
+        },
+        
+        "south carolina": {
+            "programs": [
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.25,  # 25%
+                    "notes": "25% state tax credit"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Manufacturing equipment exemption"
+                }
+            ]
+        },
+        
+        "wisconsin": {
+            "programs": [
+                {
+                    "name": "Focus on Energy",
+                    "type": "rebate",
+                    "value": 0.10,  # $/W
+                    "max_rebate": 500,
+                    "notes": "Focus on Energy rebate"
+                },
+                {
+                    "name": "Sales Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "100% sales tax exemption"
+                }
+            ]
+        },
+        
+        "utah": {
+            "programs": [
+                {
+                    "name": "State Tax Credit",
+                    "type": "tax_credit",
+                    "value": 0.25,
+                    "max_credit": 1600,
+                    "notes": "25% state tax credit"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Renewable energy property tax exemption"
+                }
+            ]
+        }
+    },
+    
+    # CANADA - Federal and provincial programs
+    "canada": {
+        "federal": {
+            "programs": [
+                {
+                    "name": "Greener Homes Grant",
+                    "type": "rebate",
+                    "value": 5000,  # flat amount
+                    "category": "residential",
+                    "notes": "Canada Greener Homes Grant for solar"
+                },
+                {
+                    "name": "Greener Homes Loan",
+                    "type": "loan",
+                    "value": 40000,  # max loan
+                    "interest": 0.0,  # 0% interest
+                    "notes": "Interest-free loan up to $40,000"
+                }
+            ]
+        },
+        
+        "ontario": {
+            "programs": [
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "Full retail rate net metering"
+                },
+                {
+                    "name": "Property Tax Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "category": "commercial",
+                    "notes": "Commercial property tax exemption"
+                }
+            ]
+        },
+        
+        "british columbia": {
+            "programs": [
+                {
+                    "name": "PST Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "Provincial sales tax exemption"
+                },
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "BC Hydro net metering program"
+                }
+            ]
+        },
+        
+        "alberta": {
+            "programs": [
+                {
+                    "name": "Solar Rebate",
+                    "type": "rebate",
+                    "value": 0.90,  # $/W
+                    "max_rebate": 10000,
+                    "notes": "Residential and Commercial Solar Program"
+                },
+                {
+                    "name": "Micro-generation",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "Credit for excess generation"
+                }
+            ]
+        },
+        
+        "quebec": {
+            "programs": [
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "Hydro-Quebec net metering"
+                },
+                {
+                    "name": "Commercial Program",
+                    "type": "rebate",
+                    "value": 0.50,  # $/W
+                    "category": "commercial",
+                    "notes": "Commercial solar incentive"
+                }
+            ]
+        },
+        
+        "saskatchewan": {
+            "programs": [
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "max_system": 100,  # kW
+                    "notes": "SaskPower net metering up to 100kW"
+                },
+                {
+                    "name": "PST Rebate",
+                    "type": "rebate",
+                    "value": 0.10,  # 10% PST rebate
+                    "notes": "PST rebate on solar equipment"
+                }
+            ]
+        },
+        
+        "nova scotia": {
+            "programs": [
+                {
+                    "name": "SolarHomes",
+                    "type": "rebate",
+                    "value": 0.60,  # $/W
+                    "max_rebate": 6000,
+                    "notes": "Efficiency NS SolarHomes rebate"
+                },
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "Enhanced net metering program"
+                }
+            ]
+        },
+        
+        "prince edward island": {
+            "programs": [
+                {
+                    "name": "Solar Electric Rebate",
+                    "type": "rebate",
+                    "value": 1.00,  # $/W
+                    "max_rebate": 10000,
+                    "notes": "PEI solar electric rebate program"
+                },
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "Net metering available"
+                }
+            ]
+        },
+        
+        "newfoundland and labrador": {
+            "programs": [
+                {
+                    "name": "Net Metering",
+                    "type": "net_metering",
+                    "value": 1.0,
+                    "notes": "Newfoundland Power net metering"
+                }
+            ]
+        }
+    },
+    
+    # EUROPE - Major markets
+    "germany": {
+        "programs": [
+            {
+                "name": "Feed-in Tariff",
+                "type": "feed_in_tariff",
+                "value": 0.082,  # €/kWh
+                "duration": 20,
+                "notes": "EEG feed-in tariff for <10kW"
+            },
+            {
+                "name": "KfW Loan",
+                "type": "loan",
+                "value": 0.0145,  # 1.45% interest
+                "notes": "Low-interest loans from KfW bank"
+            },
+            {
+                "name": "VAT Reduction",
+                "type": "tax_reduction",
+                "value": 0.0,  # 0% VAT
+                "notes": "0% VAT on residential solar"
+            }
+        ]
+    },
+    
+    "france": {
+        "programs": [
+            {
+                "name": "Self-consumption Premium",
+                "type": "rebate",
+                "value": 0.38,  # €/W for <3kW
+                "notes": "Premium for self-consumption"
+            },
+            {
+                "name": "Feed-in Tariff",
+                "type": "feed_in_tariff",
+                "value": 0.13,  # €/kWh
+                "duration": 20,
+                "notes": "20-year feed-in tariff"
+            },
+            {
+                "name": "VAT Reduction",
+                "type": "tax_reduction",
+                "value": 0.10,  # 10% VAT instead of 20%
+                "notes": "Reduced VAT rate"
+            }
+        ]
+    },
+    
+    "italy": {
+        "programs": [
+            {
+                "name": "Superbonus 110%",
+                "type": "tax_credit",
+                "value": 1.10,  # 110% tax deduction
+                "expires": "2025-12-31",
+                "notes": "110% tax deduction over 4 years"
+            },
+            {
+                "name": "Net Billing",
+                "type": "net_metering",
+                "value": 0.80,  # partial credit
+                "notes": "Scambio sul posto (net billing)"
+            }
+        ]
+    },
+    
+    "spain": {
+        "programs": [
+            {
+                "name": "Next Generation EU Funds",
+                "type": "rebate",
+                "value": 0.60,  # €/W
+                "max_rebate": 3000,
+                "notes": "EU recovery fund subsidies"
+            },
+            {
+                "name": "IBI Reduction",
+                "type": "tax_reduction",
+                "value": 0.50,  # 50% property tax reduction
+                "duration": 5,
+                "notes": "Property tax reduction varies by municipality"
+            },
+            {
+                "name": "Net Billing",
+                "type": "net_metering",
+                "value": 0.90,
+                "notes": "Simplified compensation mechanism"
+            }
+        ]
+    },
+    
+    "netherlands": {
+        "programs": [
+            {
+                "name": "Net Metering",
+                "type": "net_metering",
+                "value": 1.0,
+                "expires": "2027-01-01",
+                "notes": "Full net metering until 2027"
+            },
+            {
+                "name": "BTW Refund",
+                "type": "tax_refund",
+                "value": 0.21,  # 21% VAT refund
+                "notes": "VAT refund for residential solar"
+            },
+            {
+                "name": "SDE++",
+                "type": "feed_in_premium",
+                "value": 0.05,  # €/kWh premium
+                "category": "commercial",
+                "notes": "Feed-in premium for large systems"
+            }
+        ]
+    },
+    
+    "united kingdom": {
+        "programs": [
+            {
+                "name": "Smart Export Guarantee",
+                "type": "feed_in_tariff",
+                "value": 0.05,  # £/kWh average
+                "notes": "SEG payments for exported electricity"
+            },
+            {
+                "name": "0% VAT",
+                "type": "tax_exemption",
+                "value": 1.0,
+                "notes": "0% VAT on residential solar until 2027"
+            },
+            {
+                "name": "ECO4 Scheme",
+                "type": "rebate",
+                "value": 1.0,  # 100% for qualifying
+                "category": "low-income",
+                "notes": "Free solar for low-income households"
+            }
+        ]
+    },
+    
+    # AUSTRALIA - State programs
+    "australia": {
+        "federal": {
+            "programs": [
+                {
+                    "name": "STC Rebate",
+                    "type": "rebate",
+                    "value": 0.45,  # $/W approximate
+                    "notes": "Small-scale Technology Certificates"
+                },
+                {
+                    "name": "GST Exemption",
+                    "type": "tax_exemption",
+                    "value": 1.0,
+                    "notes": "GST exemption for systems <100kW"
+                }
+            ]
+        },
+        
+        "victoria": {
+            "programs": [
+                {
+                    "name": "Solar Homes",
+                    "type": "rebate",
+                    "value": 1400,  # flat amount
+                    "notes": "Victorian Solar Homes rebate"
+                },
+                {
+                    "name": "Interest-free Loan",
+                    "type": "loan",
+                    "value": 1400,
+                    "interest": 0.0,
+                    "notes": "Interest-free loan matching rebate"
+                }
+            ]
+        },
+        
+        "new south wales": {
+            "programs": [
+                {
+                    "name": "Empowering Homes",
+                    "type": "loan",
+                    "value": 14000,
+                    "interest": 0.0,
+                    "notes": "Interest-free loan for solar+battery"
+                },
+                {
+                    "name": "Low Income Solar",
+                    "type": "rebate",
+                    "value": 2200,
+                    "category": "low-income",
+                    "notes": "Low income household rebate"
+                }
+            ]
+        },
+        
+        "queensland": {
+            "programs": [
+                {
+                    "name": "Battery Booster",
+                    "type": "rebate",
+                    "value": 3000,
+                    "category": "battery",
+                    "notes": "Battery rebate program"
+                },
+                {
+                    "name": "Solar for Rentals",
+                    "type": "rebate",
+                    "value": 3500,
+                    "category": "rental",
+                    "notes": "Rebate for rental properties"
+                }
+            ]
+        },
+        
+        "south australia": {
+            "programs": [
+                {
+                    "name": "Home Battery Scheme",
+                    "type": "rebate",
+                    "value": 0.30,  # $/Wh
+                    "max_rebate": 3000,
+                    "category": "battery",
+                    "notes": "Battery subsidy program"
+                }
+            ]
+        }
+    },
+    
+    # Other major markets
+    "japan": {
+        "programs": [
+            {
+                "name": "FIT Scheme",
+                "type": "feed_in_tariff",
+                "value": 16,  # ¥/kWh
+                "duration": 10,
+                "notes": "Feed-in tariff for <10kW"
+            },
+            {
+                "name": "Tokyo Subsidy",
+                "type": "rebate",
+                "value": 100000,  # ¥/kW
+                "location": "Tokyo",
+                "notes": "Tokyo metropolitan subsidy"
+            }
+        ]
+    },
+    
+    "south korea": {
+        "programs": [
+            {
+                "name": "Home Solar Subsidy",
+                "type": "rebate",
+                "value": 0.70,  # 70% subsidy
+                "notes": "Government subsidy program"
+            },
+            {
+                "name": "REC Trading",
+                "type": "performance",
+                "value": 50000,  # ₩/REC
+                "notes": "Renewable Energy Certificate trading"
+            }
+        ]
+    },
+    
+    "india": {
+        "federal": {
+            "programs": [
+                {
+                    "name": "PM-KUSUM",
+                    "type": "rebate",
+                    "value": 0.60,  # 60% subsidy
+                    "category": "agricultural",
+                    "notes": "Agricultural pump solarization"
+                },
+                {
+                    "name": "Rooftop Solar Phase II",
+                    "type": "rebate",
+                    "value": 0.40,  # 40% for <3kW
+                    "notes": "National rooftop solar program"
+                }
+            ]
+        }
+    },
+    
+    "china": {
+        "programs": [
+            {
+                "name": "Feed-in Tariff",
+                "type": "feed_in_tariff",
+                "value": 0.42,  # ¥/kWh
+                "notes": "National feed-in tariff"
+            },
+            {
+                "name": "Distributed Solar Subsidy",
+                "type": "rebate",
+                "value": 0.02,  # ¥/kWh
+                "notes": "Additional distributed generation subsidy"
+            }
+        ]
+    }
+}
+
+
+@dataclass
+class IncentiveDetails:
+    """
+    Details about a specific solar incentive program.
+    """
+    name: str
+    type: str  # tax_credit, rebate, performance, loan, etc.
+    value: float  # Percentage, $/W, or flat amount
+    max_value: Optional[float] = None
+    duration: Optional[int] = None  # Years for performance incentives
+    expires: Optional[str] = None
+    category: Optional[str] = None  # residential, commercial, low-income
+    notes: Optional[str] = None
 
 
 # Comprehensive global electricity rates database (2024-2025 data)
@@ -1392,6 +2353,313 @@ class SystemConfig:
         return factor
 
 
+class SolarIncentiveManager:
+    """
+    Manages solar incentive lookup and calculations based on location.
+    Provides comprehensive regional incentive data for economic analysis.
+    """
+    
+    @staticmethod
+    def get_incentives_for_location(location_info: LocationInfo, 
+                                  system_size_kw: float,
+                                  system_cost: float) -> List[IncentiveDetails]:
+        """
+        Get applicable solar incentives for a specific location.
+        
+        Args:
+            location_info: LocationInfo object with country and state/province
+            system_size_kw: System size in kW
+            system_cost: Total system cost in USD
+            
+        Returns:
+            List of applicable IncentiveDetails
+        """
+        incentives = []
+        country = location_info.country.lower() if location_info.country else ""
+        state_province = location_info.state_province.lower() if location_info.state_province else ""
+        
+        # Handle US states
+        if country == "united states":
+            us_incentives = SOLAR_INCENTIVES.get("united states", {})
+            
+            # Add federal incentive
+            if "federal" in us_incentives:
+                federal = us_incentives["federal"]
+                incentives.append(IncentiveDetails(
+                    name="Federal ITC",
+                    type=federal["type"],
+                    value=federal["value"],
+                    expires=federal.get("expires"),
+                    notes=federal.get("notes")
+                ))
+            
+            # Add state-specific incentives
+            for state_key, state_data in us_incentives.items():
+                if state_key == "federal":
+                    continue
+                    
+                if state_key in state_province or state_province in state_key:
+                    if "programs" in state_data:
+                        for program in state_data["programs"]:
+                            # Check if program applies to system category
+                            category = program.get("category", "residential")
+                            if category == "utility" and system_size_kw < 1000:
+                                continue
+                            if category == "commercial" and system_size_kw < 10:
+                                continue
+                            if category == "low-income":
+                                # Would need income verification
+                                continue
+                                
+                            incentive = IncentiveDetails(
+                                name=program["name"],
+                                type=program["type"],
+                                value=program["value"],
+                                max_value=program.get("max_rebate") or program.get("max_credit"),
+                                duration=program.get("duration"),
+                                expires=program.get("expires"),
+                                category=category,
+                                notes=program.get("notes")
+                            )
+                            incentives.append(incentive)
+                    break
+        
+        # Handle Canadian provinces
+        elif country == "canada":
+            can_incentives = SOLAR_INCENTIVES.get("canada", {})
+            
+            # Add federal programs
+            if "federal" in can_incentives:
+                for program in can_incentives["federal"]["programs"]:
+                    incentive = IncentiveDetails(
+                        name=program["name"],
+                        type=program["type"],
+                        value=program["value"],
+                        category=program.get("category"),
+                        notes=program.get("notes")
+                    )
+                    incentives.append(incentive)
+            
+            # Add provincial programs
+            for province_key, prov_data in can_incentives.items():
+                if province_key == "federal":
+                    continue
+                    
+                if province_key in state_province or state_province in province_key:
+                    if "programs" in prov_data:
+                        for program in prov_data["programs"]:
+                            incentive = IncentiveDetails(
+                                name=program["name"],
+                                type=program["type"],
+                                value=program["value"],
+                                max_value=program.get("max_rebate"),
+                                category=program.get("category"),
+                                notes=program.get("notes")
+                            )
+                            incentives.append(incentive)
+                    break
+        
+        # Handle Australian states
+        elif country == "australia":
+            aus_incentives = SOLAR_INCENTIVES.get("australia", {})
+            
+            # Add federal STC rebate
+            if "federal" in aus_incentives:
+                for program in aus_incentives["federal"]["programs"]:
+                    incentive = IncentiveDetails(
+                        name=program["name"],
+                        type=program["type"],
+                        value=program["value"],
+                        notes=program.get("notes")
+                    )
+                    incentives.append(incentive)
+            
+            # Add state programs
+            for state_key, state_data in aus_incentives.items():
+                if state_key == "federal":
+                    continue
+                    
+                if state_key in state_province or state_province in state_key:
+                    if "programs" in state_data:
+                        for program in state_data["programs"]:
+                            incentive = IncentiveDetails(
+                                name=program["name"],
+                                type=program["type"],
+                                value=program["value"],
+                                category=program.get("category"),
+                                notes=program.get("notes")
+                            )
+                            incentives.append(incentive)
+                    break
+        
+        # Handle other countries
+        else:
+            for country_key, country_data in SOLAR_INCENTIVES.items():
+                if country_key in ["united states", "canada", "australia"]:
+                    continue
+                    
+                if country_key in country or country in country_key:
+                    if "programs" in country_data:
+                        for program in country_data["programs"]:
+                            incentive = IncentiveDetails(
+                                name=program["name"],
+                                type=program["type"],
+                                value=program["value"],
+                                duration=program.get("duration"),
+                                notes=program.get("notes")
+                            )
+                            incentives.append(incentive)
+                    break
+        
+        return incentives
+    
+    @staticmethod
+    def calculate_incentive_value(incentive: IncentiveDetails, 
+                                system_size_kw: float,
+                                system_cost: float,
+                                annual_production: float = 0) -> float:
+        """
+        Calculate the monetary value of an incentive.
+        
+        Args:
+            incentive: IncentiveDetails object
+            system_size_kw: System size in kW
+            system_cost: Total system cost in USD
+            annual_production: Annual energy production in kWh (for performance incentives)
+            
+        Returns:
+            Incentive value in USD
+        """
+        if incentive.type == "tax_credit":
+            # Percentage of system cost
+            value = system_cost * incentive.value
+            if incentive.max_value:
+                value = min(value, incentive.max_value)
+            return value
+            
+        elif incentive.type == "rebate":
+            if isinstance(incentive.value, float) and incentive.value < 1.0:
+                # Percentage rebate
+                value = system_cost * incentive.value
+            elif incentive.value > 100:
+                # Flat amount rebate
+                value = incentive.value
+            else:
+                # $/W rebate
+                value = incentive.value * system_size_kw * 1000
+            
+            if incentive.max_value:
+                value = min(value, incentive.max_value)
+            return value
+            
+        elif incentive.type in ["performance", "feed_in_tariff", "feed_in_premium"]:
+            # $/kWh over duration
+            if annual_production > 0 and incentive.duration:
+                total_production = annual_production * incentive.duration
+                value = total_production * incentive.value
+                return value
+            return 0
+            
+        elif incentive.type == "tax_exemption":
+            # Estimate tax savings (varies by location)
+            if incentive.value == 1.0:  # 100% exemption
+                # Rough estimate: 5-8% of system cost in taxes
+                return system_cost * 0.065
+            else:
+                return system_cost * 0.065 * incentive.value
+                
+        elif incentive.type == "loan":
+            # Interest savings on loan
+            if incentive.value == 0.0:  # 0% interest loan
+                # Estimate savings vs market rate (e.g., 6%)
+                loan_amount = min(incentive.max_value or system_cost, system_cost)
+                interest_saved = loan_amount * 0.06 * 5  # 5-year average
+                return interest_saved * 0.5  # Present value
+            return 0
+            
+        elif incentive.type == "net_metering":
+            # Value depends on excess generation and rates
+            # This is calculated separately in the main analysis
+            return 0
+            
+        else:
+            return 0
+    
+    @staticmethod
+    def format_incentive_summary(incentives: List[IncentiveDetails],
+                               system_size_kw: float,
+                               system_cost: float,
+                               annual_production: float) -> str:
+        """
+        Format a summary of applicable incentives.
+        
+        Args:
+            incentives: List of IncentiveDetails
+            system_size_kw: System size in kW
+            system_cost: Total system cost in USD
+            annual_production: Annual energy production in kWh
+            
+        Returns:
+            Formatted string summary
+        """
+        if not incentives:
+            return "No specific incentives found for this location."
+        
+        summary = "APPLICABLE SOLAR INCENTIVES:\n"
+        summary += "-" * 60 + "\n"
+        
+        total_value = 0
+        
+        for incentive in incentives:
+            value = SolarIncentiveManager.calculate_incentive_value(
+                incentive, system_size_kw, system_cost, annual_production
+            )
+            total_value += value
+            
+            summary += f"\n{incentive.name}:\n"
+            summary += f"  Type: {incentive.type.replace('_', ' ').title()}\n"
+            
+            if incentive.type == "tax_credit":
+                summary += f"  Value: {incentive.value*100:.0f}% of system cost\n"
+            elif incentive.type == "rebate":
+                if isinstance(incentive.value, float) and incentive.value < 1.0:
+                    summary += f"  Value: {incentive.value*100:.0f}% of system cost\n"
+                elif incentive.value > 100:
+                    summary += f"  Value: ${incentive.value:,.0f} flat rebate\n"
+                else:
+                    summary += f"  Value: ${incentive.value:.2f}/W\n"
+            elif incentive.type in ["performance", "feed_in_tariff"]:
+                summary += f"  Value: ${incentive.value:.3f}/kWh for {incentive.duration} years\n"
+            elif incentive.type == "tax_exemption":
+                summary += f"  Value: {incentive.value*100:.0f}% tax exemption\n"
+            elif incentive.type == "loan":
+                loan_amount = incentive.max_value or incentive.value
+                if loan_amount:
+                    summary += f"  Value: 0% interest loan up to ${loan_amount:,.0f}\n"
+                else:
+                    summary += f"  Value: Low-interest loan available\n"
+            elif incentive.type == "net_metering":
+                summary += f"  Value: Full retail rate credit for excess generation\n"
+            
+            if value > 0:
+                summary += f"  Estimated Value: ${value:,.0f}\n"
+            
+            if incentive.max_value:
+                summary += f"  Maximum: ${incentive.max_value:,.0f}\n"
+                
+            if incentive.expires:
+                summary += f"  Expires: {incentive.expires}\n"
+                
+            if incentive.notes:
+                summary += f"  Notes: {incentive.notes}\n"
+        
+        summary += "\n" + "-" * 60 + "\n"
+        summary += f"TOTAL ESTIMATED INCENTIVE VALUE: ${total_value:,.0f}\n"
+        summary += f"Net System Cost After Incentives: ${system_cost - total_value:,.0f}\n"
+        
+        return summary
+
+
 class AddressGeocoder:
     """
     Handles conversion of street addresses to GPS coordinates with regional detection.
@@ -1762,8 +3030,8 @@ class SolarPVCalculator:
     """
     Main calculator class for solar PV power yield estimation.
     
-    Extended with comprehensive global electricity rate detection for accurate
-    economic analysis worldwide.
+    Extended with comprehensive global electricity rate detection and
+    incentive calculation for accurate economic analysis worldwide.
     
     Implements comprehensive physics-based modeling of the complete
     photovoltaic energy conversion chain:
@@ -2601,15 +3869,16 @@ class SolarPVCalculator:
                        monthly: pd.DataFrame, annual_energy: float,
                        annual_specific_yield: float, capacity_factor: float,
                        system_size_dc: float, system_config: SystemConfig,
-                       electricity_rate: float = None, cost_per_watt: float = None) -> str:
+                       electricity_rate: float = None, cost_per_watt: float = None,
+                       incentives: List[IncentiveDetails] = None) -> str:
         """
-        Generate comprehensive performance assessment report.
+        Generate comprehensive performance assessment report with incentives.
         
         Report includes technical analysis for:
         - System design verification
         - Performance benchmarking
         - O&M planning
-        - Financial analysis
+        - Financial analysis with incentives
         - Optimization opportunities
         """
         # Use location-specific rate if not provided
@@ -2664,7 +3933,20 @@ class SolarPVCalculator:
         else:
             default_cost_per_watt = cost_per_watt
         
+        system_cost = system_size_dc * default_cost_per_watt * 1000
         annual_revenue = annual_energy * electricity_rate
+        
+        # Calculate incentive values
+        total_incentive_value = 0
+        if incentives:
+            for incentive in incentives:
+                value = SolarIncentiveManager.calculate_incentive_value(
+                    incentive, system_size_dc, system_cost, annual_energy
+                )
+                total_incentive_value += value
+        
+        net_system_cost = system_cost - total_incentive_value
+        payback_with_incentives = net_system_cost / annual_revenue
         
         # Best and worst months
         best_month = monthly['energy_kwh'].idxmax()
@@ -2689,7 +3971,7 @@ class SolarPVCalculator:
                      SOLAR PV POWER YIELD ASSESSMENT REPORT
 ================================================================================
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Software: PV-PowerEstimate v{VERSION} (Global Edition)
+Software: PV-PowerEstimate v{VERSION} (Global Edition with Incentives)
 
 SITE INFORMATION
 ----------------
@@ -2724,9 +4006,19 @@ ECONOMIC ANALYSIS (2024-2025 Market)
 ------------------------------------
 System Category: {"Residential" if system_size_dc <= 10 else "Commercial" if system_size_dc <= 1000 else "Utility Scale"}
 Typical Installed Cost: ${default_cost_per_watt:.2f}/W DC
-Total System Cost Estimate: ${system_size_dc * default_cost_per_watt * 1000:,.0f}
-Simple Payback Period: {system_size_dc * default_cost_per_watt * 1000 / annual_revenue:.1f} years
-20-Year Net Savings: ${(annual_revenue * 20) - (system_size_dc * default_cost_per_watt * 1000):,.0f}
+Total System Cost Estimate: ${system_cost:,.0f}
+Simple Payback Period: {system_cost / annual_revenue:.1f} years (before incentives)
+
+{SolarIncentiveManager.format_incentive_summary(incentives, system_size_dc, system_cost, annual_energy) if incentives else "No specific incentives found for this location."}
+
+FINANCIAL SUMMARY WITH INCENTIVES
+---------------------------------
+System Cost: ${system_cost:,.0f}
+Total Incentive Value: ${total_incentive_value:,.0f}
+Net Cost After Incentives: ${net_system_cost:,.0f}
+Payback Period with Incentives: {payback_with_incentives:.1f} years
+20-Year Net Savings: ${(annual_revenue * 20) - net_system_cost:,.0f}
+Effective Cost per Watt: ${net_system_cost / (system_size_dc * 1000):.2f}/W
 
 Cost Trends (2024-2025):
 - Residential (≤10kW): $2.50-3.00/W installed
@@ -2735,7 +4027,8 @@ Cost Trends (2024-2025):
 - Utility Scale (>1MW): $0.80-1.20/W installed
 
 Note: Costs have declined ~70% since 2010. Current prices include equipment,
-installation, permitting, and interconnection. Federal ITC (30%) not included.
+installation, permitting, and interconnection. Incentives shown above are
+estimated values - verify eligibility and actual amounts with local authorities.
 
 Cost Factors:
 - Location: Labor costs vary significantly by region
@@ -2920,6 +4213,52 @@ TECHNICAL RECOMMENDATIONS
    - Bifacial Modules: 5-15% gain with {0.2:.1f} ground albedo
    - Module Upgrade: Latest high-efficiency could add 10-20% capacity
 
+INCENTIVE OPTIMIZATION TIPS
+---------------------------"""
+        
+        if incentives:
+            report += """
+To maximize your incentive benefits:
+
+1. Federal Tax Credit (if applicable):
+   - Ensure you have sufficient tax liability
+   - Consider spreading credit over multiple years
+   - Include all eligible costs (equipment, labor, permits)
+
+2. State/Local Incentives:
+   - Check application deadlines - some have limited funding
+   - Verify all eligibility requirements
+   - Submit applications before installation starts
+   - Keep detailed documentation of all costs
+
+3. Performance Incentives:
+   - Monitor system production to ensure payments
+   - Maintain system well to maximize generation
+   - Understand payment schedules and requirements
+
+4. Net Metering:
+   - Size system to maximize self-consumption
+   - Understand utility policies on credit rollovers
+   - Consider time-of-use rates if available
+
+5. Documentation Required:
+   - Itemized invoices from installer
+   - Proof of payment
+   - System specifications
+   - Interconnection agreement
+   - Building permits
+"""
+        else:
+            report += """
+No specific incentives were found for your location, but you should:
+- Check with local utilities for rebate programs
+- Research state/provincial incentive databases
+- Consult with local installers about current programs
+- Consider federal tax incentives if applicable
+"""
+        
+        report += f"""
+
 UNDERSTANDING YOUR RESULTS
 --------------------------
 This simulation used:
@@ -2946,17 +4285,10 @@ NEXT STEPS
    - Maintenance plans
 
 4. Financial considerations:
-   - Federal/state/local incentives
-   - Net metering policies
-   - Time-of-use rates
-   - Financing options
-   
-   💡 Federal Investment Tax Credit (ITC):
-   - 30% of system cost through 2032
-   - Reduces to 26% in 2033, 22% in 2034
-   - Apply to payback calculation:
-     Net Cost = System Cost × (1 - 0.30)
-     Actual Payback = ~{system_size_dc * default_cost_per_watt * 1000 * 0.7 / annual_revenue:.1f} years with ITC
+   - Verify all incentive eligibility
+   - Compare financing options
+   - Understand net metering policies
+   - Consider time-of-use rates
 
 5. Technical validation:
    - Professional shading analysis
@@ -3148,7 +4480,7 @@ def main():
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='PV-PowerEstimate: Comprehensive Solar PV Power Yield Calculator (Global Edition)',
+        description='PV-PowerEstimate: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -3467,6 +4799,9 @@ NPV: Net Present Value of investment
 Payback Period: Years to recover investment
 PPA: Power Purchase Agreement
 ROI: Return on Investment
+ITC: Investment Tax Credit (30% federal in US)
+Rebate: Direct payment reducing system cost
+Feed-in Tariff: Payment for generated electricity
 
 TECHNICAL PARAMETERS
 --------------------
@@ -3535,10 +4870,11 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 
         else:
             # Interactive mode
-            print("\nPV-PowerEstimate - Solar PV Power Yield Calculator (Global Edition)")
+            print("\nPV-PowerEstimate - Solar PV Power Yield Calculator (Global Edition with Incentives)")
             print("=" * 50)
             print("\nThis tool estimates solar panel energy production for any location worldwide.")
             print("It uses real weather data and detailed physics modeling.")
+            print("NEW: Now includes comprehensive incentive calculations!")
             print("\nNeed help? Run with --help-tutorial for a detailed guide.")
             print("\nEnter location (choose one option):")
             print("1. Enter coordinates (latitude, longitude)")
@@ -3648,6 +4984,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("3. Model panel temperature effects")
             print("4. Apply real-world loss factors")
             print("5. Generate detailed energy production estimates")
+            print("6. Calculate applicable incentives for your location")
             print("="*50 + "\n")
             
             # Initialize system_config if not already done
@@ -3740,6 +5077,31 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         annual_revenue = annual_energy * electricity_rate
         payback_years = system_cost_estimate / annual_revenue
         
+        # Get applicable incentives
+        print("Checking for applicable incentives...")
+        if calc.location_info:
+            incentives = SolarIncentiveManager.get_incentives_for_location(
+                calc.location_info, system_size, system_cost_estimate
+            )
+            if incentives:
+                print(f"Found {len(incentives)} applicable incentive programs!")
+            else:
+                print("No specific incentives found for this location.")
+        else:
+            incentives = []
+        
+        # Calculate total incentive value
+        total_incentive_value = 0
+        if incentives:
+            for incentive in incentives:
+                value = SolarIncentiveManager.calculate_incentive_value(
+                    incentive, system_size, system_cost_estimate, annual_energy
+                )
+                total_incentive_value += value
+        
+        net_system_cost = system_cost_estimate - total_incentive_value
+        payback_with_incentives = net_system_cost / annual_revenue if annual_revenue > 0 else float('inf')
+        
         # CO2 savings
         co2_saved = annual_energy * 0.4  # kg CO2 per kWh (global average)
         
@@ -3754,7 +5116,8 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         report = calc.generate_report(
             weather_data, results, monthly, annual_energy,
             annual_specific_yield, capacity_factor, system_size, system_config,
-            electricity_rate=electricity_rate, cost_per_watt=cost_per_watt
+            electricity_rate=electricity_rate, cost_per_watt=cost_per_watt,
+            incentives=incentives
         )
         
         # Display key results
@@ -3769,6 +5132,21 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"💰 Est. Annual Revenue: ${annual_energy * electricity_rate:,.0f} (at ${electricity_rate:.3f}/kWh)")
         print(f"   Rate Info: {ElectricityRateManager.format_rate_info(electricity_rate, calc.electricity_currency, calc.rate_source)}")
         print("=" * 60)
+        
+        # Add incentives summary
+        if incentives:
+            print("\n💵 INCENTIVES SUMMARY:")
+            print("-" * 60)
+            for incentive in incentives:
+                value = SolarIncentiveManager.calculate_incentive_value(
+                    incentive, system_size, system_cost_estimate, annual_energy
+                )
+                if value > 0:
+                    print(f"   {incentive.name}: ${value:,.0f}")
+            print("-" * 60)
+            print(f"   TOTAL INCENTIVE VALUE: ${total_incentive_value:,.0f}")
+            print(f"   Net System Cost: ${net_system_cost:,.0f}")
+            print("=" * 60)
         
         # Add interpretation of results
         print("\n📋 RESULTS INTERPRETATION:")
@@ -3793,14 +5171,11 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"   Annual Value: ${annual_revenue:,.0f} (at ${electricity_rate:.3f}/kWh)")
         print(f"   Simple Payback: {payback_years:.1f} years (before incentives)")
         
-        # Calculate with federal ITC
-        itc_credit = system_cost_estimate * 0.30
-        net_cost_with_itc = system_cost_estimate - itc_credit
-        payback_with_itc = net_cost_with_itc / annual_revenue
-        
-        print(f"   With 30% Federal ITC: ${net_cost_with_itc:,.0f} net cost")
-        print(f"   Payback with ITC: {payback_with_itc:.1f} years")
-        print(f"   20-Year Savings: ${(annual_revenue * 20) - system_cost_estimate:,.0f}")
+        if incentives:
+            print(f"   Payback with Incentives: {payback_with_incentives:.1f} years")
+            print(f"   20-Year Savings: ${(annual_revenue * 20) - net_system_cost:,.0f}")
+        else:
+            print(f"   20-Year Savings: ${(annual_revenue * 20) - system_cost_estimate:,.0f}")
         
         print(f"   CO2 Avoided: {co2_saved/1000:.1f} metric tons/year")
         
@@ -3828,7 +5203,8 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         if annual_specific_yield > 1500:
             print("   - Above-average solar resource for investment")
         print("   - Get multiple installer quotes for accurate pricing")
-        print("   - Check local incentives and net metering policies")
+        print("   - Verify eligibility for all incentives shown")
+        print("   - Check net metering policies with your utility")
         
         print("=" * 60)
         
@@ -3906,8 +5282,13 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"   {'CO2 Avoided':<30} {co2_saved/1000:>19.1f} tons/yr")
         print(f"   {'Annual Value (@${electricity_rate:.3f}/kWh)':<30} ${annual_revenue:>18,.0f}")
         print(f"   {'System Cost (@${cost_per_watt}/W)':<30} ${system_cost_estimate:>18,.0f}")
-        print(f"   {'Simple Payback':<30} {payback_years:>19.1f} years")
-        print(f"   {'20-Year Net Savings':<30} ${(annual_revenue * 20) - system_cost_estimate:>18,.0f}")
+        if incentives:
+            print(f"   {'Total Incentives':<30} ${total_incentive_value:>18,.0f}")
+            print(f"   {'Net Cost After Incentives':<30} ${net_system_cost:>18,.0f}")
+            print(f"   {'Payback with Incentives':<30} {payback_with_incentives:>19.1f} years")
+        else:
+            print(f"   {'Simple Payback':<30} {payback_years:>19.1f} years")
+        print(f"   {'20-Year Net Savings':<30} ${(annual_revenue * 20) - (net_system_cost if incentives else system_cost_estimate):>18,.0f}")
         print("   " + "-" * 50)
         
         # Print the full report to console unless --no-print is specified
