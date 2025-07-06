@@ -1,4 +1,4 @@
-# PV-PowerEstimate: Solar PV Power Yield Calculator
+# PV-PowerEstimation: Solar PV Power Yield Calculator
 
 (c) 2025-07-06 Dragos Ruiu
 
