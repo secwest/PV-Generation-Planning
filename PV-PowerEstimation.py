@@ -1707,6 +1707,28 @@ class SolarPVCalculator:
         avg_temp = weather_data['temp_air'].mean()
         avg_wind = weather_data['wind_speed'].mean()
         
+        # Calculate monthly weather statistics
+        weather_monthly = weather_data.groupby(weather_data.index.month).agg({
+            'ghi': ['mean', 'sum'],
+            'dni': ['mean', 'sum'],
+            'dhi': ['mean', 'sum'],
+            'temp_air': ['mean', 'min', 'max'],
+            'wind_speed': 'mean'
+        })
+        
+        # Flatten column names
+        weather_monthly.columns = ['_'.join(col).strip() for col in weather_monthly.columns.values]
+        
+        # Convert month numbers to names
+        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        weather_monthly.index = month_names
+        
+        # Convert sum values from W to kWh/m²
+        weather_monthly['ghi_total'] = weather_monthly['ghi_sum'] / 1000
+        weather_monthly['dni_total'] = weather_monthly['dni_sum'] / 1000
+        weather_monthly['dhi_total'] = weather_monthly['dhi_sum'] / 1000
+        
         # Economic assumptions
         electricity_rate = 0.15  # $/kWh
         annual_revenue = annual_energy * electricity_rate
@@ -1812,7 +1834,52 @@ Spring  ████████████████░░░░  Increasing
         
         report += f"""
 
-Your location shows {variation:.1f}:1 seasonal variation ({best_month} vs {worst_month})"""
+Your location shows {variation:.1f}:1 seasonal variation ({best_month} vs {worst_month})
+
+MONTHLY WEATHER SUMMARY
+-----------------------
+This data represents typical meteorological conditions for your location.
+
+Solar Irradiation (Monthly Totals)
+Month    GHI (kWh/m²)    DNI (kWh/m²)    DHI (kWh/m²)
+-------  -------------   -------------   -------------"""
+        
+        # Add monthly irradiation data
+        for idx, (month, row) in enumerate(weather_monthly.iterrows()):
+            report += f"\n{month:<7}  {row['ghi_total']:>12.1f}    {row['dni_total']:>12.1f}    {row['dhi_total']:>12.1f}"
+        
+        report += f"\n-------  -------------   -------------   -------------"
+        report += f"\nTOTAL    {weather_monthly['ghi_total'].sum():>12.1f}    {weather_monthly['dni_total'].sum():>12.1f}    {weather_monthly['dhi_total'].sum():>12.1f}"
+        
+        report += f"""
+
+Temperature and Wind Conditions
+Month    Avg Temp (°C)    Min/Max (°C)      Avg Wind (m/s)
+-------  --------------   ---------------   --------------"""
+        
+        # Add monthly temperature and wind data
+        for idx, (month, row) in enumerate(weather_monthly.iterrows()):
+            report += f"\n{month:<7}  {row['temp_air_mean']:>13.1f}    {row['temp_air_min']:>5.1f} / {row['temp_air_max']:>5.1f}    {row['wind_speed_mean']:>13.1f}"
+        
+        report += f"""
+
+Climate Classification:
+- Annual horizontal irradiation: {total_irradiation:,.0f} kWh/m²/year
+- Average temperature: {avg_temp:.1f}°C
+- Average wind speed: {avg_wind:.1f} m/s
+- Classification: {self._classify_solar_resource(total_irradiation)}
+
+Solar Component Analysis:
+- Direct/Global Ratio: {weather_monthly['dni_total'].sum()/total_irradiation:.1%}
+  * >70%: Very clear skies, excellent for tracking systems
+  * 50-70%: Moderate clarity, good for fixed tilt
+  * <50%: Cloudy/diffuse dominated, tracking less beneficial
+
+Key Insights:
+- Sunniest month: {weather_monthly['ghi_total'].idxmax()} ({weather_monthly['ghi_total'].max():.0f} kWh/m²)
+- Cloudiest month: {weather_monthly['ghi_total'].idxmin()} ({weather_monthly['ghi_total'].min():.0f} kWh/m²)
+- Hottest month: {weather_monthly['temp_air_mean'].idxmax()} ({weather_monthly['temp_air_mean'].max():.1f}°C average)
+- Coldest month: {weather_monthly['temp_air_mean'].idxmin()} ({weather_monthly['temp_air_mean'].min():.1f}°C average)"""
         
         report += f"""
 
@@ -1844,10 +1911,16 @@ CLIMATE ANALYSIS
 ----------------
 Annual Solar Resource:
   Horizontal Irradiation: {total_irradiation:,.0f} kWh/m²/year
-  Avg Ambient Temperature: {avg_temp:.1f}°C
+  Direct Normal Total: {weather_monthly['dni_total'].sum():,.0f} kWh/m²/year
+  Diffuse Total: {weather_monthly['dhi_total'].sum():,.0f} kWh/m²/year
+  Direct/Global Ratio: {weather_monthly['dni_total'].sum()/total_irradiation:.1%}
+  
+Temperature Statistics:
+  Annual Average: {avg_temp:.1f}°C
+  Absolute Range: {weather_monthly['temp_air_min'].min():.1f}°C to {weather_monthly['temp_air_max'].max():.1f}°C
   Avg Wind Speed: {avg_wind:.1f} m/s
   
-Seasonal Variation:
+Energy Production Variation:
   Best Month: {best_month} ({monthly.loc[best_month, 'energy_kwh']:,.0f} kWh)
   Worst Month: {worst_month} ({monthly.loc[worst_month, 'energy_kwh']:,.0f} kWh)
   Seasonal Ratio: {monthly.loc[best_month, 'energy_kwh']/monthly.loc[worst_month, 'energy_kwh']:.1f}:1
@@ -1964,6 +2037,27 @@ Educational resources: Run with --help-tutorial for detailed guide
             return "→ Moderate soiling: Monthly cleaning recommended"
         else:
             return "→ High soiling: Consider automated cleaning or anti-soiling coating"
+    
+    def _classify_solar_resource(self, annual_ghi: float) -> str:
+        """
+        Classify solar resource based on annual GHI.
+        
+        Args:
+            annual_ghi: Annual global horizontal irradiation in kWh/m²
+            
+        Returns:
+            Classification string
+        """
+        if annual_ghi >= 2000:
+            return "Excellent (Desert/High altitude)"
+        elif annual_ghi >= 1600:
+            return "Very Good (Sunny/Mediterranean)"
+        elif annual_ghi >= 1300:
+            return "Good (Moderate climate)"
+        elif annual_ghi >= 1000:
+            return "Fair (Temperate/Partly cloudy)"
+        else:
+            return "Poor (Cloudy/High latitude)"
     
     def save_results(self, results: pd.DataFrame, monthly: pd.DataFrame,
                     report: str, output_dir: str = "pv_analysis") -> None:
@@ -2660,7 +2754,66 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         
         print("=" * 60)
         
-        # Quick performance summary table
+        # Calculate and display monthly weather summary
+        print("\n🌤️  MONTHLY WEATHER SUMMARY:")
+        print("   " + "-" * 70)
+        
+        # Calculate monthly weather statistics
+        weather_monthly = weather_data.groupby(weather_data.index.month).agg({
+            'ghi': ['mean', 'sum'],
+            'dni': 'sum',
+            'dhi': 'sum',
+            'temp_air': 'mean',
+            'wind_speed': 'mean'
+        })
+        
+        # Convert month numbers to names
+        month_names_short = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
+        print("   Month    Solar Radiation (kWh/m²)          Avg Temp    Avg Wind")
+        print("            Global   Direct   Diffuse        (°C)        (m/s)")
+        print("   " + "-" * 70)
+        
+        for i in range(12):
+            month_idx = i + 1
+            ghi_total = weather_monthly.loc[month_idx, ('ghi', 'sum')] / 1000
+            dni_total = weather_monthly.loc[month_idx, ('dni', 'sum')] / 1000
+            dhi_total = weather_monthly.loc[month_idx, ('dhi', 'sum')] / 1000
+            avg_temp = weather_monthly.loc[month_idx, ('temp_air', 'mean')]
+            avg_wind = weather_monthly.loc[month_idx, ('wind_speed', 'mean')]
+            
+            # Create visual bar for total irradiation
+            bar_length = int(ghi_total / 10)  # Scale for display
+            bar = "▓" * bar_length
+            
+            print(f"   {month_names_short[i]:<7}  {ghi_total:>6.1f}   {dni_total:>6.1f}   {dhi_total:>6.1f}        {avg_temp:>6.1f}      {avg_wind:>6.1f}  {bar}")
+        
+        print("   " + "-" * 70)
+        total_ghi = weather_data['ghi'].sum() / 1000
+        total_dni = weather_data['dni'].sum() / 1000
+        total_dhi = weather_data['dhi'].sum() / 1000
+        print(f"   TOTAL    {total_ghi:>6.0f}   {total_dni:>6.0f}   {total_dhi:>6.0f} kWh/m²/year")
+        
+        # Classify solar resource
+        if total_ghi >= 2000:
+            climate_class = "Excellent (Desert/High altitude)"
+        elif total_ghi >= 1600:
+            climate_class = "Very Good (Sunny/Mediterranean)"
+        elif total_ghi >= 1300:
+            climate_class = "Good (Moderate climate)"
+        elif total_ghi >= 1000:
+            climate_class = "Fair (Temperate/Partly cloudy)"
+        else:
+            climate_class = "Poor (Cloudy/High latitude)"
+        
+        print(f"   Climate: {climate_class}")
+        print(f"   Direct/Global Ratio: {total_dni/total_ghi:.1%} (higher = clearer skies)")
+        print("\n   📝 Radiation Components:")
+        print("      - Global: Total radiation on horizontal surface")
+        print("      - Direct: Beam radiation from sun disk (good for tracking)")
+        print("      - Diffuse: Scattered radiation from sky (works in shade)")
+        
         print("\n📊 PERFORMANCE SUMMARY TABLE:")
         print("   " + "-" * 50)
         print(f"   {'Metric':<30} {'Value':>20}")
