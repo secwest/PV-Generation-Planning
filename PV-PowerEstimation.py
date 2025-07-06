@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-PV--PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial
+PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial
 
 Copyright (c) 2025, Dragos Ruiu
 All rights reserved.
@@ -44,7 +44,7 @@ Description:
 
 Author: Dragos Ruiu
 Version: 1.0.1
-Date: 205-07-05
+Date: 2025-07-05
 
 Requirements:
     - Python 3.7 or higher
@@ -111,7 +111,7 @@ for import_name, package_name in required_packages.items():
 # Handle missing packages
 if missing_packages:
     print("=" * 60)
-    print("PV--PowerEstimate.py - Missing Required Packages")
+    print("PV-PowerEstimate.py - Missing Required Packages")
     print("=" * 60)
     print(f"\nThe following packages are not installed:")
     for pkg in missing_packages:
@@ -119,98 +119,208 @@ if missing_packages:
     
     # Detect if we're in an externally managed environment
     externally_managed = False
+    strict_pep668 = False
     try:
         import sysconfig
         import pathlib
         stdlib = sysconfig.get_path('stdlib')
         marker_file = pathlib.Path(stdlib) / 'EXTERNALLY-MANAGED'
         externally_managed = marker_file.exists()
+        
+        # Check if even --user is blocked
+        if externally_managed:
+            import subprocess
+            result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--user', '--dry-run', 'pip'], 
+                                  capture_output=True, text=True)
+            if 'externally-managed-environment' in result.stderr:
+                strict_pep668 = True
     except:
         pass
     
-    if externally_managed:
+    if strict_pep668:
+        print("\n⚠️  Detected STRICT externally-managed environment (PEP 668)")
+        print("   Your system blocks ALL pip installations, even --user.")
+        print("   This is common on Ubuntu 23.04+, Debian 12+.")
+        print("\n   You MUST use either:")
+        print("   1. A virtual environment (recommended)")
+        print("   2. System packages via apt")
+        print("   3. Override with --break-system-packages (risky)")
+    elif externally_managed:
         print("\n⚠️  Detected externally-managed Python environment (PEP 668)")
-        print("   This is common on Ubuntu 23.04+, Debian 12+, and similar.")
-        print("   Will use '--user' installation to avoid system conflicts.")
     
-    print("\nInstallation options:")
-    print("\n1. Install to user directory (recommended):")
-    print(f"   python3 -m pip install --user {' '.join(missing_packages)}")
-    
-    print("\n2. Install in a virtual environment (best practice):")
-    print("   python3 -m venv pv_env")
-    print("   source pv_env/bin/activate  # On Windows: pv_env\\Scripts\\activate")
-    print(f"   pip install {' '.join(missing_packages)}")
-    
-    if not externally_managed:
-        print("\n3. Install system-wide (requires sudo):")
-        print(f"   sudo python3 -m pip install {' '.join(missing_packages)}")
-    
-    # Ask user if they want to install automatically
     print("\n" + "-" * 60)
-    try:
-        response = input("\nInstall packages to user directory automatically? (y/n): ").strip().lower()
-        if response == 'y':
-            print("\nInstalling packages to user directory...")
-            import subprocess
+    
+    # Provide installation options based on environment
+    if strict_pep668:
+        print("\nChoose installation method:")
+        print("\n1. Create and use virtual environment (RECOMMENDED)")
+        print("2. Install system packages via apt (may be outdated)")
+        print("3. Force install with --break-system-packages (AT YOUR OWN RISK)")
+        print("4. Exit and install manually")
+        
+        try:
+            choice = input("\nYour choice (1-4): ").strip()
             
-            # Try to install packages with --user flag
-            try:
-                # First, ensure pip is up to date
-                print("Updating pip...")
-                subprocess.check_call([
-                    sys.executable, '-m', 'pip', 'install', '--user', '--upgrade', 'pip'
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            if choice == '1':
+                # Virtual environment option
+                print("\nCreating virtual environment...")
+                import subprocess
+                venv_name = "pv_env"
                 
-                # Install the missing packages
-                print(f"Installing {', '.join(missing_packages)}...")
-                subprocess.check_call([
-                    sys.executable, '-m', 'pip', 'install', '--user'] + missing_packages
-                )
-                
-                print("\n✅ Packages installed successfully!")
-                print("\n⚠️  IMPORTANT: You may need to add the user install directory to PATH.")
-                
-                # Check if user site-packages is in PATH
-                import site
-                user_site = site.getusersitepackages()
-                user_base = site.USER_BASE
-                user_bin = os.path.join(user_base, 'bin')
-                
-                if user_bin not in os.environ.get('PATH', ''):
-                    print(f"\nAdd this to your ~/.bashrc or ~/.profile:")
-                    print(f'export PATH="$PATH:{user_bin}"')
-                    print(f"\nThen run: source ~/.bashrc")
-                
-                print("\nPlease run the script again.")
+                try:
+                    # First check if venv module is available
+                    try:
+                        import venv
+                    except ImportError:
+                        print("\n❌ Error: venv module not found!")
+                        print("Please install it with:")
+                        print("   sudo apt install python3-venv python3-full")
+                        sys.exit(1)
+                    
+                    # Create venv with progress indication
+                    print(f"Creating {venv_name}... (this may take a moment)")
+                    
+                    # Run with visible output
+                    result = subprocess.run(
+                        [sys.executable, '-m', 'venv', venv_name],
+                        capture_output=True,
+                        text=True,
+                        timeout=60  # 60 second timeout
+                    )
+                    
+                    if result.returncode != 0:
+                        print(f"\n❌ Error creating virtual environment:")
+                        if result.stderr:
+                            print(result.stderr)
+                        sys.exit(1)
+                    
+                    print(f"✅ Created virtual environment: {venv_name}")
+                    
+                    # Determine pip path based on OS
+                    if os.name == 'nt':  # Windows
+                        pip_path = os.path.join(venv_name, 'Scripts', 'pip')
+                        python_path = os.path.join(venv_name, 'Scripts', 'python')
+                        activate_cmd = f"{venv_name}\\Scripts\\activate"
+                    else:  # Unix-like
+                        pip_path = os.path.join(venv_name, 'bin', 'pip')
+                        python_path = os.path.join(venv_name, 'bin', 'python')
+                        activate_cmd = f"source {venv_name}/bin/activate"
+                    
+                    # Check if pip exists
+                    if not os.path.exists(pip_path):
+                        print(f"\n❌ Error: pip not found in virtual environment at {pip_path}")
+                        print("The virtual environment may not have been created properly.")
+                        sys.exit(1)
+                    
+                    # Install packages in venv
+                    print(f"\nInstalling packages in virtual environment...")
+                    print(f"This will install: {', '.join(missing_packages)}")
+                    
+                    # Run pip install with visible output
+                    result = subprocess.run(
+                        [pip_path, 'install'] + missing_packages,
+                        text=True,
+                        timeout=300  # 5 minute timeout for package installation
+                    )
+                    
+                    if result.returncode != 0:
+                        print(f"\n❌ Error installing packages")
+                        sys.exit(1)
+                    
+                    print("\n✅ Packages installed successfully!")
+                    print(f"\n📝 To use this environment, run:")
+                    print(f"   {activate_cmd}")
+                    print(f"   python PV-PowerEstimate.py")
+                    print(f"\n🚀 Or run directly:")
+                    print(f"   {python_path} PV-PowerEstimate.py")
+                    
+                    sys.exit(0)
+                    
+                except subprocess.TimeoutExpired:
+                    print(f"\n❌ Timeout: Virtual environment creation took too long")
+                    print("This might indicate a system issue.")
+                    sys.exit(1)
+                except subprocess.CalledProcessError as e:
+                    print(f"\n❌ Error creating virtual environment: {e}")
+                    print("\nMake sure python3-venv is installed:")
+                    print("   sudo apt install python3-venv python3-full")
+                    sys.exit(1)
+                except Exception as e:
+                    print(f"\n❌ Unexpected error: {e}")
+                    sys.exit(1)
+                    
+            elif choice == '2':
+                # System packages option
+                print("\nInstall system packages with:")
+                print("   sudo apt update")
+                print("   sudo apt install python3-pandas python3-numpy python3-requests")
+                print("\nNote: pvlib may not be available via apt. After installing the above, try:")
+                print("   pip install --break-system-packages pvlib")
                 sys.exit(0)
                 
-            except subprocess.CalledProcessError as e:
-                print(f"\n❌ Error installing packages: {e}")
+            elif choice == '3':
+                # Force install option
+                print("\n⚠️  WARNING: This may break system Python packages!")
+                confirm = input("Are you SURE you want to continue? (yes/no): ").strip().lower()
+                if confirm == 'yes':
+                    print("\nForce installing packages...")
+                    import subprocess
+                    try:
+                        subprocess.check_call([
+                            sys.executable, '-m', 'pip', 'install', 
+                            '--break-system-packages'] + missing_packages
+                        )
+                        print("\n✅ Packages installed (forced)")
+                        print("Please run the script again.")
+                        sys.exit(0)
+                    except subprocess.CalledProcessError as e:
+                        print(f"\n❌ Installation failed: {e}")
+                        sys.exit(1)
+                else:
+                    print("\nInstallation cancelled.")
+                    sys.exit(0)
+                    
+            else:
+                print("\nExiting. Please install packages manually.")
+                sys.exit(0)
                 
-                # Try alternative approaches
-                print("\nTrying alternative installation method...")
-                try:
-                    # Try using pip directly as a module
-                    import pip
-                    pip.main(['install', '--user'] + missing_packages)
-                except:
-                    print("\nAutomatic installation failed. Please install manually:")
-                    print(f"python3 -m pip install --user {' '.join(missing_packages)}")
-                    print("\nIf that doesn't work, try:")
-                    print("1. Create a virtual environment:")
-                    print("   python3 -m venv pv_env")
-                    print("   source pv_env/bin/activate")
-                    print(f"   pip install {' '.join(missing_packages)}")
-                    sys.exit(1)
-        else:
-            print("\nPlease install the required packages manually and run again.")
-            print(f"\nRecommended command:")
-            print(f"python3 -m pip install --user {' '.join(missing_packages)}")
+        except KeyboardInterrupt:
+            print("\n\nInstallation cancelled.")
             sys.exit(1)
-    except KeyboardInterrupt:
-        print("\n\nInstallation cancelled.")
-        sys.exit(1)
+            
+    else:
+        # Non-strict environment - try --user install
+        try:
+            response = input("\nInstall packages to user directory automatically? (y/n): ").strip().lower()
+            if response == 'y':
+                print("\nInstalling packages to user directory...")
+                import subprocess
+                
+                try:
+                    subprocess.check_call([
+                        sys.executable, '-m', 'pip', 'install', '--user'] + missing_packages
+                    )
+                    print("\n✅ Packages installed successfully!")
+                    print("Please run the script again.")
+                    sys.exit(0)
+                except subprocess.CalledProcessError:
+                    print("\n❌ User installation failed. Creating virtual environment instead...")
+                    # Fall back to venv
+                    subprocess.check_call([sys.executable, '-m', 'venv', 'pv_env'])
+                    if os.name == 'nt':
+                        pip_path = os.path.join('pv_env', 'Scripts', 'pip')
+                    else:
+                        pip_path = os.path.join('pv_env', 'bin', 'pip')
+                    subprocess.check_call([pip_path, 'install'] + missing_packages)
+                    print("\n✅ Virtual environment created and packages installed!")
+                    print("Run: source pv_env/bin/activate && python PV-PowerEstimate.py")
+                    sys.exit(0)
+            else:
+                print("\nPlease install the required packages manually.")
+                sys.exit(1)
+        except KeyboardInterrupt:
+            print("\n\nInstallation cancelled.")
+            sys.exit(1)
 
 # Now import the packages
 try:
@@ -222,11 +332,7 @@ try:
     from pvlib.temperature import TEMPERATURE_MODEL_PARAMETERS
 except ImportError as e:
     print(f"Error: Failed to import package after installation. {e}")
-    print("Please check your Python environment and PATH settings.")
-    print("\nIf you just installed packages with --user, you may need to:")
-    print("1. Restart your terminal")
-    print("2. Add user site-packages to PATH")
-    print("3. Or use a virtual environment")
+    print("Please check your Python environment.")
     sys.exit(1)
 
 # Configure logging
@@ -241,7 +347,7 @@ logger = logging.getLogger(__name__)
 warnings.filterwarnings('ignore', module='pvlib')
 
 # Constants
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 DEFAULT_SYSTEM_SIZE = 8.0  # kW
 MIN_LATITUDE = -90.0
 MAX_LATITUDE = 90.0
@@ -504,7 +610,7 @@ class SolarPVCalculator:
     """
     Main calculator class for solar PV power yield estimation.
     
-    Implements full physics-based modeling of the complete
+    Implements comprehensive physics-based modeling of the complete
     photovoltaic energy conversion chain:
     
     1. SOLAR RESOURCE (Extraterrestrial → Ground level)
@@ -945,7 +1051,7 @@ class SolarPVCalculator:
     def calculate_pv_output(self, weather_data: pd.DataFrame, 
                            system_config: Optional[SystemConfig] = None) -> Tuple[pd.DataFrame, float]:
         """
-        Calculate PV system power output using full physics models.
+        Calculate PV system power output using comprehensive physics models.
         
         COMPLETE PHOTOVOLTAIC MODELING CHAIN:
         =====================================
@@ -1288,7 +1394,7 @@ class SolarPVCalculator:
                        annual_specific_yield: float, capacity_factor: float,
                        system_size_dc: float, system_config: SystemConfig) -> str:
         """
-        Generate complete performance assessment report.
+        Generate comprehensive performance assessment report.
         
         Report includes technical analysis for:
         - System design verification
@@ -1327,7 +1433,7 @@ class SolarPVCalculator:
                      SOLAR PV POWER YIELD ASSESSMENT REPORT
 ================================================================================
 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Software: PV--PowerEstimate v{VERSION}
+Software: PV-PowerEstimate v{VERSION}
 
 SITE INFORMATION
 ----------------
@@ -1462,7 +1568,7 @@ P90 Estimate (90% probability): {annual_energy*0.92:,.0f} kWh
 P10 Estimate (10% probability): {annual_energy*1.08:,.0f} kWh
 
 ================================================================================
-End of Report - Generated by PV--PowerEstimate v{VERSION}
+End of Report - Generated by PV-PowerEstimate v{VERSION}
 Technical questions: dr@secwest.net
 ================================================================================
 """
@@ -1560,22 +1666,22 @@ def main():
     
     Supports multiple input methods:
     1. Coordinates: --lat 37.7749 --lon -122.4194
-    2. Address: --address "111 Wellington Street, Ottawa, Ontario, K1A 0A9"
+    2. Address: --address "1600 Pennsylvania Ave, Washington DC"
     3. Interactive: prompts for input
     
     Example usage:
-        python PV--PowerEstimate.py --lat 37.7749 --lon -122.4194 --system-size 10
-        python PV--PowerEstimate.py --address "San Francisco, CA" --tilt 30
-        python PV--PowerEstimate.py  # Interactive mode
+        python PV-PowerEstimate.py --lat 37.7749 --lon -122.4194 --system-size 10
+        python PV-PowerEstimate.py --address "San Francisco, CA" --tilt 30
+        python PV-PowerEstimate.py  # Interactive mode
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='PV--PowerEstimate: Solar PV Power Yield Calculator',
+        description='PV--PowerEstimate: Comprehensive Solar PV Power Yield Calculator',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   %(prog)s --lat 37.7749 --lon -122.4194
-  %(prog)s --address "111 Wellington Street, Ottawa, Ontario, K1A 0A9"
+  %(prog)s --address "1600 Pennsylvania Ave, Washington DC"
   %(prog)s --lat 51.5074 --lon -0.1278 --system-size 10 --tilt 35
 
 For more information, visit: https://github.com/yourusername/pv-powerestimate
@@ -1710,7 +1816,7 @@ For more information, visit: https://github.com/yourusername/pv-powerestimate
                 
         else:
             # Interactive mode
-            print("\nPV--PowerEstimate - Solar PV Power Yield Calculator")
+            print("\nPV-PowerEstimate - Solar PV Power Yield Calculator")
             print("=" * 50)
             print("\nEnter location (choose one option):")
             print("1. Enter coordinates (latitude, longitude)")
