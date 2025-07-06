@@ -308,7 +308,7 @@ USING THIS TOOL EFFECTIVELY
    - Permitting requirements
 
 Author: Dragos Ruiu
-Version: 1.2.0
+Version: 1.2.1
 Date: 2025-07-06
 
 Requirements:
@@ -603,7 +603,7 @@ except ImportError as e:
 warnings.filterwarnings('ignore', module='pvlib')
 
 # Constants
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 DEFAULT_SYSTEM_SIZE = 8.0  # kW
 MIN_LATITUDE = -90.0
 MAX_LATITUDE = 90.0
