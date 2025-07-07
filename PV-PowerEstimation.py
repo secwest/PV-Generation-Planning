@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives v1.2.5
+PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives v1.3.1
 
 Copyright (c) 2025, Dragos Ruiu
 All rights reserved.
@@ -308,7 +308,7 @@ USING THIS TOOL EFFECTIVELY
    - Permitting requirements
 
 Author: Dragos Ruiu
-Version: 1.2.1
+Version: 1.3.1
 Date: 2025-07-06
 
 Requirements:
@@ -603,7 +603,7 @@ except ImportError as e:
 warnings.filterwarnings('ignore', module='pvlib')
 
 # Constants
-VERSION = "1.2.1"
+VERSION = "1.3.1"
 DEFAULT_SYSTEM_SIZE = 8.0  # kW
 MIN_LATITUDE = -90.0
 MAX_LATITUDE = 90.0
@@ -3922,14 +3922,14 @@ class SolarPVCalculator:
         
         # Determine installed cost based on system size if not provided
         if cost_per_watt is None:
-            if system_size_dc <= 10:  # Residential
-                default_cost_per_watt = 2.25  # $2.00-2.50/W typical 2024-2025
+            if system_size_dc <= 20:  # Residential (raised from 10kW)
+                default_cost_per_watt = 2.25  # $2.00-2.50/W typical 2024-2025 (middle of range)
             elif system_size_dc <= 100:  # Small commercial
-                default_cost_per_watt = 1.50  # $1.25-1.75/W typical 2024-2025
+                default_cost_per_watt = 1.50  # $1.25-1.75/W typical 2024-2025 (middle of range)
             elif system_size_dc <= 1000:  # Large commercial
-                default_cost_per_watt = 1.25  # $1.00-1.50/W typical 2024-2025
+                default_cost_per_watt = 1.25  # $1.00-1.50/W typical 2024-2025 (middle of range)
             else:  # Utility scale
-                default_cost_per_watt = 0.85  # $0.70-1.00/W typical 2024-2025
+                default_cost_per_watt = 0.85  # $0.70-1.00/W typical 2024-2025 (middle of range)
         else:
             default_cost_per_watt = cost_per_watt
         
@@ -3978,14 +3978,88 @@ class SolarPVCalculator:
             if cumulative_savings >= net_system_cost and enhanced_payback_with_incentives == 0:
                 enhanced_payback_with_incentives = year
         
+        # Enhanced commercial and utility-scale financial modeling
+        ppa_rate = None
+        lcoe = None
+        project_irr = None
+        debt_fraction = 0
+        tax_equity_fraction = 0
+        
+        if system_size_dc > 100:  # Large commercial and utility scale
+            # Modern utility-scale financing assumptions (2024-2025)
+            if system_size_dc > 1000:  # Utility scale
+                # Typical utility-scale PPA rates by region
+                if electricity_rate < 0.08:  # Low-cost regions
+                    ppa_rate = 0.025  # $25/MWh
+                elif electricity_rate < 0.12:  # Moderate-cost regions
+                    ppa_rate = 0.035  # $35/MWh
+                else:  # High-cost regions
+                    ppa_rate = 0.045  # $45/MWh
+                
+                # Utility-scale financing structure
+                debt_fraction = 0.70  # 70% debt typical
+                tax_equity_fraction = 0.20  # 20% tax equity
+                equity_fraction = 0.10  # 10% sponsor equity
+                debt_rate = 0.045  # 4.5% interest rate
+                
+            else:  # Large commercial (100kW-1MW)
+                # C&I PPA rates typically 10-20% below retail
+                ppa_rate = electricity_rate * 0.85
+                
+                # Commercial financing structure
+                debt_fraction = 0.60  # 60% debt
+                tax_equity_fraction = 0.0  # Less common for C&I
+                equity_fraction = 0.40  # 40% equity
+                debt_rate = 0.055  # 5.5% interest rate
+            
+            # Calculate LCOE for commercial/utility projects
+            # LCOE = (Total Lifetime Cost) / (Total Lifetime Energy)
+            capex = system_cost
+            annual_opex = system_size_dc * 10  # $10/kW/year O&M
+            
+            # Calculate present value of costs
+            pv_costs = capex
+            pv_energy = 0
+            
+            for year in range(1, system_life + 1):
+                # O&M costs escalate at inflation (2.5%)
+                year_opex = annual_opex * ((1 + 0.025) ** (year - 1))
+                pv_costs += year_opex / ((1 + discount_rate) ** year)
+                
+                # Energy with degradation
+                year_degradation = 1.0 if year == 1 else (1 - 0.005 * (year - 1))
+                year_energy = annual_energy * year_degradation
+                pv_energy += year_energy / ((1 + discount_rate) ** year)
+            
+            lcoe = pv_costs / pv_energy
+            
+            # Calculate project IRR (simplified)
+            # For utility scale with ITC and depreciation
+            if system_size_dc > 1000:
+                # Include 30% ITC and MACRS depreciation benefits
+                itc_value = capex * 0.30
+                depreciation_pv = capex * 0.85 * 0.21 * 2.5  # Simplified MACRS PV
+                
+                # Approximate project IRR
+                project_irr = ((annual_revenue + depreciation_pv/5) / (capex - itc_value)) * 100
+            else:
+                project_irr = (annual_revenue / capex) * 100
+        
         # Additional savings for commercial customers
-        if system_size_dc > 10:  # Commercial system
-            # Demand charge savings (conservative estimate)
-            demand_charge_savings = system_size_dc * 5 * 12  # $5/kW/month typical
+        if system_size_dc > 20:  # Commercial system
+            # Demand charge savings (more sophisticated calculation)
+            # Based on typical demand charge rates and solar coincidence
+            if system_size_dc <= 100:  # Small commercial
+                demand_charge_savings = system_size_dc * 5 * 12 * 0.6  # 60% coincidence
+            elif system_size_dc <= 1000:  # Large commercial  
+                demand_charge_savings = system_size_dc * 8 * 12 * 0.5  # Higher charges, lower coincidence
+            else:  # Utility scale (usually no demand charges)
+                demand_charge_savings = 0
+                
             annual_revenue += demand_charge_savings
             
         # Time-of-use benefit (if applicable)
-        if electricity_rate > 0.15:  # Higher rate areas often have TOU
+        if electricity_rate > 0.15 and system_size_dc <= 1000:  # TOU for commercial, not utility
             tou_multiplier = 1.15  # 15% benefit from producing during peak hours
             annual_revenue *= tou_multiplier
         
@@ -3993,6 +4067,22 @@ class SolarPVCalculator:
         best_month = monthly['energy_kwh'].idxmax()
         worst_month = monthly['energy_kwh'].idxmin()
         variation = monthly.loc[best_month, 'energy_kwh'] / monthly.loc[worst_month, 'energy_kwh']
+        
+        # Utility-scale specific analysis
+        if system_size_dc > 1000:
+            # Calculate hourly generation profile statistics
+            hourly_profile = results.groupby(results.index.hour)['ac_power'].mean()
+            peak_hour = hourly_profile.idxmax()
+            
+            # Calculate ramp rates
+            ramp_rates = results['ac_power'].diff().abs()
+            max_ramp_rate = ramp_rates.max()
+            
+            # Calculate generation duration curve
+            sorted_generation = results['ac_power'].sort_values(ascending=False).reset_index(drop=True)
+            hours_above_90 = (sorted_generation > system_size_dc * 0.9).sum()
+            hours_above_50 = (sorted_generation > system_size_dc * 0.5).sum()
+            hours_above_20 = (sorted_generation > system_size_dc * 0.2).sum()
         
         # Calculate insolation utilization
         # How much of available solar resource is captured
@@ -4045,13 +4135,13 @@ Estimated Annual Revenue: ${annual_revenue:,.0f} (at ${electricity_rate:.3f}/kWh
 
 ECONOMIC ANALYSIS (2024-2025 Market)
 ------------------------------------
-System Category: {"Residential" if system_size_dc <= 10 else "Commercial" if system_size_dc <= 1000 else "Utility Scale"}
+System Category: {"Residential" if system_size_dc <= 20 else "Commercial" if system_size_dc <= 1000 else "Utility Scale"}
 Typical Installed Cost: ${default_cost_per_watt:.2f}/W DC
 Total System Cost Estimate: ${system_cost:,.0f}
 Simple Payback Period: {system_cost / annual_revenue:.1f} years (before incentives, no rate escalation)
 Future Rate Increase Payback: {enhanced_payback_years} years (before incentives, with 3% rate escalation)
 
-{SolarIncentiveManager.format_incentive_summary(incentives, system_size_dc, system_cost, annual_energy) if incentives else "No specific incentives found for this location."}
+{SolarIncentiveManager.format_incentive_summary(incentives, system_size_dc, system_cost, annual_energy) if incentives else ("Note: Incentives not applicable for large commercial/utility scale systems (>100kW)." if system_size_dc > 100 else "No specific incentives found for this location.")}
 
 NET PRESENT VALUE ANALYSIS (25-year)
 ------------------------------------
@@ -4059,36 +4149,151 @@ NPV of Energy Savings: ${npv_savings:,.0f} (at 3% electricity escalation, 5% dis
 Net Present Value: ${npv_savings - net_system_cost:,.0f}
 Internal Rate of Return: {((npv_savings / net_system_cost) ** (1/25) - 1) * 100:.1f}%
 
-FINANCIAL SUMMARY WITH INCENTIVES
+{"FINANCIAL SUMMARY WITH INCENTIVES" if total_incentive_value > 0 else "FINANCIAL SUMMARY"}
 ---------------------------------
 System Cost: ${system_cost:,.0f}
-Total Incentive Value: ${total_incentive_value:,.0f}
-Net Cost After Incentives: ${net_system_cost:,.0f}
-Simple Payback (No Incentives): {system_cost / annual_revenue:.1f} years
-Simple Payback with Incentives: {payback_with_incentives:.1f} years (no escalation)
-Future Rate Increase Payback with Incentives: {enhanced_payback_with_incentives} years (with 3% rate escalation)
+{"Total Incentive Value: ${:,.0f}".format(total_incentive_value) if total_incentive_value > 0 else ""}
+{"Net Cost After Incentives: ${:,.0f}".format(net_system_cost) if total_incentive_value > 0 else ""}
+Simple Payback: {system_cost / annual_revenue:.1f} years (no incentives, no escalation)
+{"Simple Payback with Incentives: {:.1f} years (no escalation)".format(payback_with_incentives) if total_incentive_value > 0 else ""}
+Future Rate Increase Payback: {enhanced_payback_years} years (no incentives, with 3% rate escalation)
+{"Future Rate Increase Payback with Incentives: {} years (with 3% rate escalation)".format(enhanced_payback_with_incentives) if total_incentive_value > 0 else ""}
 25-Year Cash Flow: ${cumulative_savings:,.0f}
 25-Year Net Profit: ${cumulative_savings - net_system_cost:,.0f}
 Effective Cost per Watt: ${net_system_cost / (system_size_dc * 1000):.2f}/W
 Levelized Cost of Energy: ${net_system_cost / (annual_energy * 25 * 0.87):,.3f}/kWh
 
+{f'''COMMERCIAL/UTILITY SCALE FINANCIAL METRICS
+----------------------------------------
+Project Type: {"Utility Scale (>1MW)" if system_size_dc > 1000 else "Large Commercial (100kW-1MW)"}
+Typical PPA Rate: ${ppa_rate:.3f}/kWh (${ppa_rate*1000:.0f}/MWh)
+Project LCOE: ${lcoe:.3f}/kWh (all-in cost)
+LCOE vs PPA Spread: ${(ppa_rate - lcoe)*1000:.1f}/MWh
+Estimated Project IRR: {project_irr:.1f}% (unlevered, after-tax)
+
+FINANCING STRUCTURE (TYPICAL)
+-----------------------------
+Total Project Cost: ${system_cost:,.0f}
+Debt Financing: {debt_fraction*100:.0f}% (${system_cost*debt_fraction:,.0f} at {debt_rate*100:.1f}% interest)
+Tax Equity: {tax_equity_fraction*100:.0f}% (${system_cost*tax_equity_fraction:,.0f})
+Sponsor Equity: {(1-debt_fraction-tax_equity_fraction)*100:.0f}% (${system_cost*(1-debt_fraction-tax_equity_fraction):,.0f})
+
+KEY ASSUMPTIONS
+---------------
+Federal ITC: 30% (through 2032)
+Depreciation: 5-year MACRS
+O&M Cost: ${annual_opex:,.0f}/year (${annual_opex/system_size_dc:.0f}/kW/year)
+Annual Degradation: 0.5%
+Debt Term: {"20 years" if system_size_dc > 1000 else "15 years"}
+
+REVENUE STREAMS
+---------------
+{f"PPA Revenue: ${annual_energy * ppa_rate:,.0f}/year" if system_size_dc > 1000 else f"Energy Savings: ${annual_energy * electricity_rate:,.0f}/year"}
+{f"Capacity Payments: Market dependent" if system_size_dc > 1000 else f"Demand Charge Reduction: ${demand_charge_savings:,.0f}/year"}
+{"REC Revenue: ~$5-20/MWh additional" if system_size_dc > 1000 else "SRECs: Market dependent (if available)"}
+
+{f'''UTILITY-SCALE GENERATION PLANNING METRICS
+-----------------------------------------
+Annual Capacity Factor: {capacity_factor:.1f}% ({"Excellent" if capacity_factor > 25 else "Good" if capacity_factor > 20 else "Moderate"})
+Peak Generation Season: {best_month} ({monthly.loc[best_month, 'energy_kwh']:,.0f} kWh)
+Lowest Generation Month: {worst_month} ({monthly.loc[worst_month, 'energy_kwh']:,.0f} kWh)
+Seasonal Variation Ratio: {variation:.1f}:1
+
+GRID INTEGRATION CONSIDERATIONS
+-------------------------------
+Peak Output: {peak_power:,.1f} kW AC ({peak_power/system_size_dc*100:.0f}% of DC capacity)
+Ramp Rate Capability: ~{system_size_dc * 0.2:.0f} kW/minute (typical)
+Minimum Stable Generation: ~{system_size_dc * 0.1:.0f} kW (10% of capacity)
+Reactive Power Range: ±{system_size_dc * 0.33:.0f} kVAR (at full output)
+
+AVAILABILITY & RELIABILITY
+--------------------------
+Expected Availability: 97-99% (weather-adjusted)
+Forced Outage Rate: 0.5-1.0% annually
+Scheduled Maintenance: 3-5 days/year
+Weather Downtime: {1.5 if self.lat > 45 or self.lat < -45 else 0.5:.1f}% (snow/soiling)
+
+CURTAILMENT RISK FACTORS
+------------------------
+Grid Congestion Risk: {"High" if capacity_factor > 25 else "Moderate" if capacity_factor > 20 else "Low"} (based on resource quality)
+Negative Pricing Hours: Location and market dependent
+Economic Curtailment: 2-5% typical in high-penetration markets
+Voltage/Frequency Events: <0.5% with modern inverters
+
+ENERGY SHAPE ANALYSIS
+---------------------
+Solar Peak Hours: 10 AM - 3 PM (varies by season)
+Peak Generation Hour: {peak_hour}:00 (annual average)
+Duck Curve Contribution: Peak generation during low demand
+Evening Ramp Support: None without storage
+Morning Ramp Timing: Good alignment with demand increase
+
+GENERATION DURATION CURVE
+-------------------------
+Hours > 90% Capacity: {hours_above_90:,} hours/year ({hours_above_90/87.6:.1f}%)
+Hours > 50% Capacity: {hours_above_50:,} hours/year ({hours_above_50/87.6:.1f}%)  
+Hours > 20% Capacity: {hours_above_20:,} hours/year ({hours_above_20/87.6:.1f}%)
+Maximum Ramp Rate: {max_ramp_rate:.0f} kW/interval
+
+RESOURCE ADEQUACY VALUE
+-----------------------
+Capacity Credit: {15 if system_size_dc > 5000 else 20 if system_size_dc > 1000 else 25}% typical (market dependent)
+ELCC (Effective Load Carrying Capability): Declining with penetration
+Peak Coincidence: {60 if self.lat < 35 and self.lat > -35 else 40}% summer peak contribution
+
+TRANSMISSION & INTERCONNECTION
+------------------------------
+Interconnection Voltage: {345 if system_size_dc > 200000 else 230 if system_size_dc > 100000 else 138 if system_size_dc > 50000 else 69 if system_size_dc > 20000 else 34.5} kV typical
+Substation Requirements: {"New substation likely" if system_size_dc > 50000 else "Existing substation possible"}
+Network Upgrades Risk: {"High" if system_size_dc > 100000 else "Moderate" if system_size_dc > 50000 else "Low"}
+Gen-Tie Line Length: Site specific (major cost factor)
+
+ADVANCED GRID SERVICES
+----------------------
+Frequency Response: Fast (sub-second with modern inverters)
+Voltage Regulation: ±0.95-1.05 p.u. capability
+Black Start Capability: Possible with battery hybrid
+Synthetic Inertia: Available with advanced controls
+Grid Forming Mode: Future capability for microgrids
+
+ENVIRONMENTAL & PERMITTING
+--------------------------
+Land Requirements: ~{system_size_dc * 0.004:.0f} acres (fixed tilt)
+                  ~{system_size_dc * 0.007:.0f} acres (single-axis tracking)
+Habitat Impact: Site-specific assessment required
+Glare Analysis: Required near airports/highways
+Stormwater Management: NPDES permit typically required
+Cultural Resources: Phase I assessment recommended
+
+DEVELOPMENT TIMELINE
+--------------------
+Typical Schedule: {"36-48 months" if system_size_dc > 50000 else "24-36 months"} from NTP to COD
+- Permitting: 6-12 months
+- Interconnection: 12-24 months
+- Procurement: 3-6 months  
+- Construction: 6-12 months
+- Commissioning: 1-2 months
+''' if system_size_dc > 1000 else ""}''' if system_size_dc > 100 else ""}
 Current Market Costs (2024-2025):
-- Residential (≤10kW): $2.00-2.50/W installed (was $3.50+ in 2020)
+- Residential (≤20kW): $2.00-2.50/W installed (was $3.50+ in 2020)
 - Small Commercial (10-100kW): $1.25-1.75/W installed
 - Large Commercial (100kW-1MW): $1.00-1.50/W installed
 - Utility Scale (>1MW): $0.70-1.00/W installed
 - Expected cost decline: 3-5% annually through 2030
 
 Note: Costs have declined ~70% since 2010. Current prices include equipment,
-installation, permitting, and interconnection. Incentives shown above are
-estimated values - verify eligibility and actual amounts with local authorities.
+installation, permitting, and interconnection.{" Incentives shown above are estimated values - verify eligibility and actual amounts with local authorities." if system_size_dc <= 100 else ""}
 
-Cost Factors:
-- Location: Labor costs vary significantly by region
+{"Cost Factors:" if system_size_dc <= 100 else "Large-Scale Project Considerations:"}
+{"""- Location: Labor costs vary significantly by region
 - Roof complexity: Simple roofs cost less than complex ones
 - Local permitting: Some areas have streamlined processes
 - Competition: More installers = better pricing
-- Equipment quality: Premium panels cost 10-20% more
+- Equipment quality: Premium panels cost 10-20% more""" if system_size_dc <= 100 else """- EPC contractor selection critical for project success
+- Interconnection costs can vary significantly by location
+- Land lease/acquisition costs not included in $/W figures
+- Tracking systems add 10-20% to cost but boost production
+- Grid capacity and transmission access are key factors"""}
 
 TECHNICAL PERFORMANCE METRICS
 -----------------------------
@@ -4533,7 +4738,7 @@ def main():
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='PV-PowerEstimate v1.2.5: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
+        description='PV-PowerEstimate v1.3.1: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -4923,7 +5128,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 
         else:
             # Interactive mode
-            print("\nPV-PowerEstimate v1.2.5 - Solar PV Power Yield Calculator (Global Edition with Incentives)")
+            print("\nPV-PowerEstimate v1.3.1 - Solar PV Power Yield Calculator (Global Edition with Incentives)")
             print("=" * 50)
             print("\nThis tool estimates solar panel energy production for any location worldwide.")
             print("It uses real weather data and detailed physics modeling.")
@@ -4972,14 +5177,17 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             
             # Ask about system size
             print("\n⚡ SYSTEM SIZE")
-            print("Typical sizes: Residential 3-10 kW, Commercial 10-500 kW, Utility >1000 kW")
+            print("Typical sizes: Residential 3-20 kW, Commercial 20-1000 kW, Utility >1000 kW")
             print("Rule of thumb: 1 kW ≈ 3-4 panels ≈ 1,400 kWh/year (varies by location)")
             print("\n💵 CURRENT MARKET COSTS (2024-2025):")
             print("   Residential: $2.00-2.50/W installed")
             print("   Commercial: $1.25-1.75/W installed")
             print("   Utility: $0.70-1.00/W installed")
             print("   (Costs have declined ~70% since 2010!)")
-            print("   Note: Get multiple quotes - prices vary by region and installer")
+            if not args.system_size or args.system_size <= 100:
+                print("   Note: Get multiple quotes - prices vary by region and installer")
+            else:
+                print("   Note: Large projects typically use competitive RFP process")
             
             size_str = input(f"\nSystem size in kW (press Enter for default {DEFAULT_SYSTEM_SIZE} kW): ").strip()
             # Note: system_config will be created later with proper defaults and command-line overrides
@@ -5136,14 +5344,14 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             cost_per_watt = args.cost_per_watt
         else:
             # Auto-select based on system size (2024-2025 estimates)
-            if system_size <= 10:  # Residential
-                cost_per_watt = 2.75
+            if system_size <= 20:  # Residential
+                cost_per_watt = 2.25
             elif system_size <= 100:  # Small commercial
-                cost_per_watt = 2.00
-            elif system_size <= 1000:  # Large commercial
                 cost_per_watt = 1.50
+            elif system_size <= 1000:  # Large commercial
+                cost_per_watt = 1.25
             else:  # Utility scale
-                cost_per_watt = 1.00
+                cost_per_watt = 0.85
         
         # Get electricity rate
         if hasattr(args, 'electricity_rate') and args.electricity_rate:
@@ -5162,17 +5370,22 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         discount_rate = 0.05  # 5% discount rate
         system_life = 25  # years
         
-        # Get applicable incentives
-        print("Checking for applicable incentives...")
-        if calc.location_info:
-            incentives = SolarIncentiveManager.get_incentives_for_location(
-                calc.location_info, system_size, system_cost_estimate
-            )
-            if incentives:
-                print(f"Found {len(incentives)} applicable incentive programs!")
+        # Get applicable incentives (only for residential and small commercial)
+        # Typical limits: Residential rebates 10-25kW, net metering 25-100kW, USDA REAP 100kW
+        if system_size <= 100:  # Only check incentives for systems 100kW or smaller
+            print("Checking for applicable incentives...")
+            if calc.location_info:
+                incentives = SolarIncentiveManager.get_incentives_for_location(
+                    calc.location_info, system_size, system_cost_estimate
+                )
+                if incentives:
+                    print(f"Found {len(incentives)} applicable incentive programs!")
+                else:
+                    print("No specific incentives found for this location.")
             else:
-                print("No specific incentives found for this location.")
+                incentives = []
         else:
+            print("Note: Incentives not applicable for large commercial/utility scale systems (>100kW)")
             incentives = []
         
         # Calculate total incentive value
@@ -5213,7 +5426,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 enhanced_payback_with_incentives = year
         
         # Additional savings for commercial customers
-        if system_size > 10:  # Commercial system
+        if system_size > 20:  # Commercial system
             # Demand charge savings (conservative estimate)
             demand_charge_savings = system_size * 5 * 12  # $5/kW/month typical
             annual_revenue += demand_charge_savings
@@ -5311,11 +5524,37 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"   25-Year CO2 Reduction: {co2_saved * 25 * 0.87 / 1000:.0f} metric tons")
         
         # Commercial benefits if applicable
-        if system_size > 10:
+        if system_size > 20:
             print(f"\n🏢 COMMERCIAL BENEFITS:")
-            print(f"   Demand Charge Savings: ${system_size * 5 * 12:,.0f}/year (estimated)")
-            print(f"   Peak Shaving Benefit: Reduces peak demand charges")
-            print(f"   Grid Independence: Improved resilience during outages")
+            if system_size <= 1000:
+                print(f"   Demand Charge Savings: ${system_size * 5 * 12:,.0f}/year (estimated)")
+                print(f"   Peak Shaving Benefit: Reduces peak demand charges")
+                print(f"   Grid Independence: Improved resilience during outages")
+            
+        # Large commercial and utility scale metrics
+        if system_size > 100:
+            print(f"\n📊 LARGE-SCALE PROJECT METRICS:")
+            # Calculate these metrics similar to the report
+            if system_size > 1000:  # Utility scale
+                if electricity_rate < 0.08:
+                    ppa_rate_display = 0.025
+                elif electricity_rate < 0.12:
+                    ppa_rate_display = 0.035
+                else:
+                    ppa_rate_display = 0.045
+            else:  # Large commercial
+                ppa_rate_display = electricity_rate * 0.85
+                
+            # Simplified LCOE calculation
+            annual_opex = system_size * 10
+            simple_lcoe = (system_cost_estimate + annual_opex * 20) / (annual_energy * 20 * 0.87)
+            
+            print(f"   Typical PPA Rate: ${ppa_rate_display:.3f}/kWh (${ppa_rate_display*1000:.0f}/MWh)")
+            print(f"   Estimated LCOE: ${simple_lcoe:.3f}/kWh")
+            print(f"   {"Utility-Scale" if system_size > 1000 else "C&I"} Financing: {"70% debt, 20% tax equity" if system_size > 1000 else "60% debt typical"}")
+            print(f"   Federal ITC: 30% (through 2032)")
+            if system_size > 1000:
+                print(f"   Grid Services: Frequency regulation, voltage support potential")
         
         if electricity_rate > 0.15:
             print(f"\n⏰ TIME-OF-USE BENEFITS:")
@@ -5340,15 +5579,26 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print(f"   {month:<10} {row['energy_kwh']:>12,.0f}    {row['daily_energy']:>8.1f}    {pct_of_annual:>5.1f}% {bar}")
         
         print("\n💡 RECOMMENDATIONS:")
-        if capacity_factor < 15:
-            print("   - Consider checking shading or system design")
-        if variation > 3:
-            print("   - High seasonal variation - consider battery storage")
-        if annual_specific_yield > 1500:
-            print("   - Above-average solar resource for investment")
-        print("   - Get multiple installer quotes for accurate pricing")
-        print("   - Verify eligibility for all incentives shown")
-        print("   - Check net metering policies with your utility")
+        if system_size <= 100:  # Residential and small commercial
+            if capacity_factor < 15:
+                print("   - Consider checking shading or system design")
+            if variation > 3:
+                print("   - High seasonal variation - consider battery storage")
+            if annual_specific_yield > 1500:
+                print("   - Above-average solar resource for investment")
+            print("   - Get multiple installer quotes for accurate pricing")
+            print("   - Verify eligibility for all incentives shown")
+            print("   - Check net metering policies with your utility")
+        else:  # Large commercial and utility scale
+            if capacity_factor < 18:
+                print("   - Consider single-axis tracking to boost production")
+            if annual_specific_yield > 1600:
+                print("   - Excellent solar resource for utility-scale development")
+            print("   - Engage experienced EPC contractor for project execution")
+            print("   - Conduct detailed interconnection study early in process")
+            if system_size > 1000:
+                print("   - Consider co-location with battery storage for grid services")
+                print("   - Evaluate PPA offtake options with utilities/corporates")
         
         print("=" * 60)
         
