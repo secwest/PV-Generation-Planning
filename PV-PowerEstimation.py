@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives v1.2.2
+PV-PowerEstimate.py - Solar PV Power Yield Calculator & Tutorial with Incentives v1.2.5
 
 Copyright (c) 2025, Dragos Ruiu
 All rights reserved.
@@ -3957,6 +3957,7 @@ class SolarPVCalculator:
         npv_savings = 0
         cumulative_savings = 0
         enhanced_payback_years = 0
+        enhanced_payback_with_incentives = 0
         
         for year in range(1, system_life + 1):
             # Degradation: -0.5% per year after year 1
@@ -3971,8 +3972,11 @@ class SolarPVCalculator:
             npv_savings += year_revenue / ((1 + discount_rate) ** year)
             cumulative_savings += year_revenue
             
-            if cumulative_savings >= net_system_cost and enhanced_payback_years == 0:
+            if cumulative_savings >= system_cost and enhanced_payback_years == 0:
                 enhanced_payback_years = year
+                
+            if cumulative_savings >= net_system_cost and enhanced_payback_with_incentives == 0:
+                enhanced_payback_with_incentives = year
         
         # Additional savings for commercial customers
         if system_size_dc > 10:  # Commercial system
@@ -4045,7 +4049,7 @@ System Category: {"Residential" if system_size_dc <= 10 else "Commercial" if sys
 Typical Installed Cost: ${default_cost_per_watt:.2f}/W DC
 Total System Cost Estimate: ${system_cost:,.0f}
 Simple Payback Period: {system_cost / annual_revenue:.1f} years (before incentives, no rate escalation)
-Future Rate Increase Payback Period: {(system_cost - total_incentive_value) / annual_revenue / (1 + electricity_escalation_rate/2):.1f} years (with 3% rate escalation)
+Future Rate Increase Payback: {enhanced_payback_years} years (before incentives, with 3% rate escalation)
 
 {SolarIncentiveManager.format_incentive_summary(incentives, system_size_dc, system_cost, annual_energy) if incentives else "No specific incentives found for this location."}
 
@@ -4062,7 +4066,7 @@ Total Incentive Value: ${total_incentive_value:,.0f}
 Net Cost After Incentives: ${net_system_cost:,.0f}
 Simple Payback (No Incentives): {system_cost / annual_revenue:.1f} years
 Simple Payback with Incentives: {payback_with_incentives:.1f} years (no escalation)
-Future Rate Increase Payback with Incentives: {enhanced_payback_years} years (with 3% rate escalation)
+Future Rate Increase Payback with Incentives: {enhanced_payback_with_incentives} years (with 3% rate escalation)
 25-Year Cash Flow: ${cumulative_savings:,.0f}
 25-Year Net Profit: ${cumulative_savings - net_system_cost:,.0f}
 Effective Cost per Watt: ${net_system_cost / (system_size_dc * 1000):.2f}/W
@@ -4529,7 +4533,7 @@ def main():
     """
     # Set up argument parser
     parser = argparse.ArgumentParser(
-        description='PV-PowerEstimate v1.2.2: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
+        description='PV-PowerEstimate v1.2.5: Comprehensive Solar PV Power Yield Calculator (Global Edition with Incentives)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -4919,7 +4923,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 
         else:
             # Interactive mode
-            print("\nPV-PowerEstimate v1.2.2 - Solar PV Power Yield Calculator (Global Edition with Incentives)")
+            print("\nPV-PowerEstimate v1.2.5 - Solar PV Power Yield Calculator (Global Edition with Incentives)")
             print("=" * 50)
             print("\nThis tool estimates solar panel energy production for any location worldwide.")
             print("It uses real weather data and detailed physics modeling.")
@@ -4978,19 +4982,14 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("   Note: Get multiple quotes - prices vary by region and installer")
             
             size_str = input(f"\nSystem size in kW (press Enter for default {DEFAULT_SYSTEM_SIZE} kW): ").strip()
+            # Note: system_config will be created later with proper defaults and command-line overrides
+            interactive_system_size = None
             if size_str:
                 try:
-                    system_size = float(size_str)
-                    # Calculate modules needed
-                    modules_needed = int(system_size * 1000 / 400)  # Assuming 400W modules
-                    system_config = SystemConfig()
-                    system_config.modules_per_string = min(modules_needed, 20)
-                    system_config.strings_per_inverter = max(1, modules_needed // 20)
+                    interactive_system_size = float(size_str)
+                    print(f"System size set to {interactive_system_size} kW")
                 except ValueError:
-                    print("Invalid size, using default")
-                    system_config = SystemConfig()
-            else:
-                system_config = SystemConfig()
+                    print("Invalid size, will use default or command-line value")
             
             # Ask about tilt
                         
@@ -4999,20 +4998,19 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
             print("Flatter = better for summer, Steeper = better for winter & snow shedding")
             
             tilt_str = input(f"Tilt angle in degrees (press Enter for latitude-based default): ").strip()
+            interactive_tilt = None
             if tilt_str:
                 try:
-                    system_config.surface_tilt = float(tilt_str)
+                    interactive_tilt = float(tilt_str)
                 except ValueError:
-                    system_config.surface_tilt = abs(latitude)
-            else:
-                system_config.surface_tilt = abs(latitude)
+                    print("Invalid tilt, will use latitude-based default")
             
-            # Set standard mounting type
-            system_config.module_type = 'glass_glass'
-            system_config.racking_model = 'open_rack'
+            # Store interactive mode settings to apply later
+            interactive_module_type = 'glass_glass'
+            interactive_racking_model = 'open_rack'
             
             # Set azimuth based on hemisphere
-            system_config.surface_azimuth = 180 if latitude > 0 else 0
+            interactive_azimuth = 180 if latitude > 0 else 0
             
             # Helper function for azimuth direction
             def azimuth_to_direction(azimuth):
@@ -5022,7 +5020,7 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
                 return directions[index]
             
             print("\n🎯 Using standard azimuth (direction) for your hemisphere")
-            print(f"   Azimuth: {system_config.surface_azimuth}° ({azimuth_to_direction(system_config.surface_azimuth)})")
+            print(f"   Azimuth: {interactive_azimuth}° ({azimuth_to_direction(interactive_azimuth)})")
             
             # Add some educational info before calculation
             print("\n" + "="*50)
@@ -5074,20 +5072,52 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         print(f"Retrieved {len(weather_data)} hours of weather data")
         
         # Configure system
+        # Start with defaults
         system_config = SystemConfig()
         
-        # Apply command-line overrides
+        # Apply command-line overrides first
         if args.system_size:
             # Calculate modules needed for target system size
             modules_needed = int(args.system_size * 1000 / args.module_power)
-            system_config.modules_per_string = min(modules_needed, 20)
-            system_config.strings_per_inverter = max(1, modules_needed // 20)
+            if modules_needed <= 20:
+                system_config.modules_per_string = modules_needed
+                system_config.strings_per_inverter = 1
+            else:
+                system_config.modules_per_string = 20
+                system_config.strings_per_inverter = (modules_needed + 19) // 20  # Round up
             
+        # Apply command-line overrides
         system_config.module_power = args.module_power
         system_config.surface_tilt = args.tilt if args.tilt else abs(calc.lat)
         system_config.surface_azimuth = args.azimuth
         system_config.module_type = args.module_type
         system_config.racking_model = args.racking_model
+        
+        # Apply interactive mode overrides (these have highest priority)
+        if args.lat is None and args.lon is None and args.address is None:
+            # We're in interactive mode
+            if 'interactive_system_size' in locals() and interactive_system_size is not None:
+                # Reconfigure for interactive system size
+                modules_needed = int(interactive_system_size * 1000 / system_config.module_power)
+                if modules_needed <= 20:
+                    system_config.modules_per_string = modules_needed
+                    system_config.strings_per_inverter = 1
+                else:
+                    system_config.modules_per_string = 20
+                    system_config.strings_per_inverter = (modules_needed + 19) // 20
+                print(f"Configuring {system_config.modules_per_string * system_config.strings_per_inverter} x {system_config.module_power}W modules = {system_config.system_size_kw:.1f} kW system")
+            
+            if 'interactive_tilt' in locals() and interactive_tilt is not None:
+                system_config.surface_tilt = interactive_tilt
+            
+            if 'interactive_azimuth' in locals():
+                system_config.surface_azimuth = interactive_azimuth
+                
+            if 'interactive_module_type' in locals():
+                system_config.module_type = interactive_module_type
+                
+            if 'interactive_racking_model' in locals():
+                system_config.racking_model = interactive_racking_model
         
         # Size inverter appropriately (DC/AC ratio of 1.2)
         system_config.inverter_power = system_config.system_size_kw * 1000 / 1.2
@@ -5399,10 +5429,12 @@ For detailed explanations, run: python PV-PowerEstimate.py --help-tutorial
         if incentives:
             print(f"   {'Total Incentives':<30} {f'${total_incentive_value:,.0f}':>20}")
             print(f"   {'Net Cost After Incentives':<30} {f'${net_system_cost:,.0f}':>20}")
-            print(f"   {'Payback with Incentives':<30} {f'{payback_with_incentives:.1f} years':>20}")
+            print(f"   {'Simple Payback w/ Incentives':<30} {f'{payback_with_incentives:.1f} years':>20}")
+            print(f"   {'Future Rate Increase Payback':<30} {f'{enhanced_payback_with_incentives} years':>20}")
         else:
             print(f"   {'Simple Payback':<30} {f'{payback_years:.1f} years':>20}")
-        print(f"   {'20-Year Net Savings':<30} {f'${(annual_revenue * 20) - (net_system_cost if incentives else system_cost_estimate):,.0f}':>20}")
+            print(f"   {'Future Rate Increase Payback':<30} {f'{enhanced_payback_years} years':>20}")
+        print(f"   {'25-Year Net Savings':<30} {f'${cumulative_savings - (net_system_cost if incentives else system_cost_estimate):,.0f}':>20}")
         print("   " + "-" * 50)
         
         # Print the full report to console unless --no-print is specified
