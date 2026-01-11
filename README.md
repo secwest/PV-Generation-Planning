@@ -1107,7 +1107,7 @@ monthly.columns = [
 - PVGIS and NREL for providing free weather data
 - OpenStreetMap for geocoding services
 
-## 📖 Comprehensive Technical Glossary
+## 📖 Technical Glossary
 
 ### Solar Resource Terms
 - **AM (Air Mass)**: Path length of sunlight through atmosphere relative to zenith path. AM1.5 = standard test condition
