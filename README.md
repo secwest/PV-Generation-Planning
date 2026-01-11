@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 
-A comprehensive solar photovoltaic (PV) power yield calculator with global coverage, real weather data, and detailed economic analysis including regional incentives.
+A solar photovoltaic (PV) power yield calculator with global coverage, real weather data, and detailed economic analysis including regional incentives.
 
 ## 🌟 Features
 
